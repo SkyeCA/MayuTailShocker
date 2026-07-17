@@ -1,43 +1,87 @@
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox, simpledialog
 from tkinter import font as tkfont
 import threading
 import time
 import random
 import requests
 import json
-import sys
-import os
 from datetime import datetime
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
+import sys
+import os
 
 # ==========================================
-# CONFIGURATION
+# CONSTANTS & PERSISTENT FILE PATH
 # ==========================================
 OSC_IP = "127.0.0.1"
-OSC_PORT = 9001
-
-# OpenShock Configuration
+OSC_PORT = 9001 
 OPENSHOCK_API_URL = "https://api.openshock.app/1/shockers/control"
-OPENSHOCK_API_KEY = "837bdGIHHfMv9ijVeGqMzuDqWJthIdadNb0MaPPKmOXVh92JkdR0klTZyccQV73j"
-SHOCKER_ID = "019f6765-ad55-79cb-aaf9-19ebab56b811"
 
-# VRChat Parameter Paths
-PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
-PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
+# Default VRChat Parameter Paths
+DEFAULT_PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
+DEFAULT_PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
+
+CONFIG_FILE = os.path.join(os.path.dirname(sys.argv[0]), "config.json")
 
 # ==========================================
-# BUILD HELPERS
+# HELPER FUNCTIONS
 # ==========================================
 def resource_path(relative_path):
-        try:
-            # Handle resources inside PyInstaller tempfolder
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
+    # Handle resources inside PyInstaller tempfolder
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
-        return os.path.join(base_path, relative_path)
+class SettingsModal(simpledialog.Dialog):
+    """ Modal dialog window for inputting settings """
+    def __init__(self, parent, title, current_key, current_id, param_grabbed, param_stretch):
+        self.current_key = current_key
+        self.current_id = current_id
+        self.param_grabbed = param_grabbed
+        self.param_stretch = param_stretch
+        self.result = None
+        super().__init__(parent, title)
+
+    def body(self, master):
+        # OpenShock Settings
+        tk.Label(master, text="OpenShock API Key:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.key_entry = tk.Entry(master, width=55)
+        self.key_entry.insert(0, self.current_key)
+        self.key_entry.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(master, text="Shocker ID:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.id_entry = tk.Entry(master, width=55)
+        self.id_entry.insert(0, self.current_id)
+        self.id_entry.pack(fill=tk.X, pady=(0, 10))
+        
+        # Visual Divider
+        tk.Frame(master, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=10)
+
+        # VRChat Parameter Settings
+        tk.Label(master, text="OSC Grab Parameter:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.grab_entry = tk.Entry(master, width=55)
+        self.grab_entry.insert(0, self.param_grabbed)
+        self.grab_entry.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(master, text="OSC Stretch Parameter:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.stretch_entry = tk.Entry(master, width=55)
+        self.stretch_entry.insert(0, self.param_stretch)
+        self.stretch_entry.pack(fill=tk.X, pady=(0, 5))
+        
+        return self.key_entry  # Sets initial keyboard focus
+
+    def apply(self):
+        # Store the values when the user clicks 'OK'
+        self.result = {
+            "api_key": self.key_entry.get().strip(),
+            "shocker_id": self.id_entry.get().strip(),
+            "param_grabbed": self.grab_entry.get().strip(),
+            "param_stretch": self.stretch_entry.get().strip()
+        }
 
 # ==========================================
 # MAIN APPLICATION LOGIC
@@ -46,27 +90,42 @@ class TailShockerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Mayu Tail Shock Controller")
-        icon_image = tk.PhotoImage(file=resource_path("resources/icon.png"))
-        self.root.iconphoto(True, icon_image)
-        self.root.geometry("500x700") 
         
+        # Load the PNG icon
+        try:
+            icon_image = tk.PhotoImage(file=resource_path("resources/icon.png"))
+            self.root.iconphoto(True, icon_image) 
+        except Exception:
+            pass 
+
+        self.root.geometry("500x740") 
+        
+        # Internal configuration states
+        self.api_key = ""
+        self.shocker_id = ""
+        self.param_grabbed = DEFAULT_PARAM_GRABBED
+        self.param_stretch = DEFAULT_PARAM_STRETCH
+        
+        # State variables
         self.is_active = True
         self.last_shock_time = 0.0
         self.is_grabbed = False
         self.current_stretch = 0.0
         self.session_shock_count = 0
         
+        # Threading lock
         self.lock = threading.Lock()
 
         self._build_gui()
+        self._load_config()
         self._start_osc_server()
 
     def _build_gui(self):
-        # Enable/Disable Button
+        # Master Stop Button
         button_font = tkfont.Font(size=20, weight="bold")
         self.stop_btn = tk.Label(
             self.root, 
-            text="Disable", 
+            text="EMERGENCY STOP\n(Click to Disable)", 
             bg="red", 
             fg="white", 
             font=button_font,
@@ -77,8 +136,20 @@ class TailShockerApp:
         self.stop_btn.pack(fill=tk.X, padx=10, pady=10, ipady=20)
         self.stop_btn.bind("<Button-1>", lambda event: self.toggle_active())
 
-        # Safety and Settings Frame
-        slider_frame = tk.LabelFrame(self.root, text="Safety Caps & Settings", padx=10, pady=10)
+        # Top Control Buttons Frame (Settings Button)
+        control_frame = tk.Frame(self.root)
+        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.settings_btn = tk.Button(
+            control_frame, 
+            text="⚙ Settings & Configuration", 
+            command=self.open_settings,
+            font=("Helvetica", 10, "bold")
+        )
+        self.settings_btn.pack(side=tk.LEFT)
+
+        # Safety Sliders & Settings Frame
+        slider_frame = tk.LabelFrame(self.root, text="Safety Caps & Behavior", padx=10, pady=10)
         slider_frame.pack(fill=tk.X, padx=10, pady=5)
 
         self.max_intensity_var = tk.IntVar(value=30)
@@ -128,8 +199,7 @@ class TailShockerApp:
         self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
         
-        # Shock Counter Label
-        self.shock_count_label = tk.Label(status_frame, text="Tail Pulls This Session: 0", font=("Helvetica", 10))
+        self.shock_count_label = tk.Label(status_frame, text="Shocks This Session: 0", font=("Helvetica", 10))
         self.shock_count_label.pack(side=tk.RIGHT)
 
         # Log Text Box
@@ -137,6 +207,65 @@ class TailShockerApp:
         self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
         
         self.log_message("System Started. Listening for OSC data...")
+
+    def _load_config(self):
+        """ Read settings from configuration file if it exists """
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    data = json.load(f)
+                    self.api_key = data.get("api_key", "")
+                    self.shocker_id = data.get("shocker_id", "")
+                    # Fallback to default if the config field exists but is empty
+                    self.param_grabbed = data.get("param_grabbed") or DEFAULT_PARAM_GRABBED
+                    self.param_stretch = data.get("param_stretch") or DEFAULT_PARAM_STRETCH
+                    
+                if self.api_key and self.shocker_id:
+                    self.log_message("Configuration loaded successfully.")
+                    return
+            except Exception:
+                self.log_message("Warning: Error reading config.json.")
+        
+        self.log_message("SETUP REQUIRED: Click 'Settings & Configuration' to add your API Key and Shocker ID.")
+
+    def open_settings(self):
+        """ Open modal and handle setting adjustments """
+        modal = SettingsModal(
+            self.root, 
+            "Configuration", 
+            self.api_key, 
+            self.shocker_id, 
+            self.param_grabbed, 
+            self.param_stretch
+        )
+        
+        if modal.result:
+            old_grabbed = self.param_grabbed
+            old_stretch = self.param_stretch
+
+            self.api_key = modal.result["api_key"]
+            self.shocker_id = modal.result["shocker_id"]
+            
+            # If the user clears the entry entirely, force the fallback to default
+            self.param_grabbed = modal.result["param_grabbed"] or DEFAULT_PARAM_GRABBED
+            self.param_stretch = modal.result["param_stretch"] or DEFAULT_PARAM_STRETCH
+            
+            try:
+                with open(CONFIG_FILE, 'w') as f:
+                    json.dump({
+                        "api_key": self.api_key, 
+                        "shocker_id": self.shocker_id,
+                        "param_grabbed": self.param_grabbed,
+                        "param_stretch": self.param_stretch
+                    }, f, indent=4)
+                self.log_message("Configuration saved and updated.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not write configuration file:\n{e}")
+
+            # If OSC parameters were changed, safely restart the server in the background
+            if old_grabbed != self.param_grabbed or old_stretch != self.param_stretch:
+                self.log_message("OSC Parameters changed. Restarting OSC listener...")
+                threading.Thread(target=self._restart_osc_server, daemon=True).start()
 
     def toggle_active(self):
         self.is_active = not self.is_active
@@ -162,6 +291,9 @@ class TailShockerApp:
         self.log_area.config(state='disabled')
 
     def trigger_shock(self):
+        if not self.api_key or not self.shocker_id:
+            return
+
         with self.lock:
             if not self.is_active:
                 return
@@ -205,22 +337,25 @@ class TailShockerApp:
             self.status_label.config(text="READY", fg="green")
 
     def _update_shock_count_ui(self):
-        self.shock_count_label.config(text=f"Tail Pulls This Session: {self.session_shock_count}")
+        self.shock_count_label.config(text=f"Shocks This Session: {self.session_shock_count}")
 
     def send_halt_command(self):
         self.send_openshock_command(0, 300, "Stop")
 
     def send_openshock_command(self, intensity, duration_ms, action_type):
+        if not self.api_key or not self.shocker_id:
+            return
+
         try:
             headers = {
                 "accept": "application/json",
-                "OpenShockToken": OPENSHOCK_API_KEY,
+                "OpenShockToken": self.api_key,
                 "Content-Type": "application/json"
             }
             
             payload = [
                 {
-                    "id": SHOCKER_ID,
+                    "id": self.shocker_id,
                     "type": action_type,
                     "intensity": intensity,
                     "duration": duration_ms
@@ -236,7 +371,6 @@ class TailShockerApp:
             
             if response.status_code == 200:
                 self.log_message(f"SUCCESS: {action_type} command sent.")
-                
                 if action_type == "Shock":
                     self.session_shock_count += 1
                     self.root.after(0, self._update_shock_count_ui)
@@ -244,7 +378,6 @@ class TailShockerApp:
                 error_msg = f"ERROR: API returned {response.status_code}"
                 if response.text:
                     error_msg += f" - Details: {response.text.strip()}"
-                
                 self.log_message(error_msg)
                 
         except Exception:
@@ -268,20 +401,30 @@ class TailShockerApp:
         if self.session_shock_count > 0:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                with open("shock_log.txt", "a") as f:
-                    f.write(f"[{timestamp}] Session ended. Total tail pulls: {self.session_shock_count}\n")
-            except Exception as e:
+                log_file_path = os.path.join(os.path.dirname(sys.argv[0]), "shock_log.txt")
+                with open(log_file_path, "a") as f:
+                    f.write(f"[{timestamp}] Session ended. Total shocks sent: {self.session_shock_count}\n")
+            except Exception:
                 pass
 
     def _start_osc_server(self):
         dispatcher = Dispatcher()
-        dispatcher.map(PARAM_GRABBED, self.on_grabbed_update)
-        dispatcher.map(PARAM_STRETCH, self.on_stretch_update)
+        dispatcher.map(self.param_grabbed, self.on_grabbed_update)
+        dispatcher.map(self.param_stretch, self.on_stretch_update)
 
         self.server = BlockingOSCUDPServer((OSC_IP, OSC_PORT), dispatcher)
         
         self.osc_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.osc_thread.start()
+        
+    def _restart_osc_server(self):
+        """ Shut down the running server safely and start a new one with updated mappings """
+        try:
+            self.server.shutdown()
+        except Exception:
+            pass
+        self._start_osc_server()
+        self.log_message("OSC listener restarted and mapped to new parameters.")
 
 def main():
     root = tk.Tk()
@@ -289,7 +432,11 @@ def main():
     
     def on_closing():
         app.save_shock_stats()
-        app.server.shutdown()
+        # Shutdown server gracefully before exiting to free the socket port
+        try:
+            app.server.shutdown()
+        except Exception:
+            pass
         root.destroy()
         
     root.protocol("WM_DELETE_WINDOW", on_closing)
