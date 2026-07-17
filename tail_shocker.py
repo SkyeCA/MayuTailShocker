@@ -6,6 +6,8 @@ import time
 import random
 import requests
 import json
+import sys
+import os
 from datetime import datetime
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
@@ -24,12 +26,27 @@ SHOCKER_ID = "019f6765-ad55-79cb-aaf9-19ebab56b811"
 # VRChat Parameter Paths
 PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
 PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
+
+# ==========================================
+# BUILD HELPERS
+# ==========================================
+def resource_path(relative_path):
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+
+        return os.path.join(base_path, relative_path)
+
 # ==========================================
 
 class TailShockerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Mayu Tail Shock Controller")
+        icon_image = tk.PhotoImage(file=resource_path("resources/icon.png"))
+        self.root.iconphoto(True, icon_image)
         self.root.geometry("500x700") 
         
         # State variables
