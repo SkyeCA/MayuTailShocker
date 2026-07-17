@@ -16,7 +16,7 @@ from pythonosc.osc_server import BlockingOSCUDPServer
 # CONFIGURATION
 # ==========================================
 OSC_IP = "127.0.0.1"
-OSC_PORT = 9001 # Default VRChat OSC Receive Port
+OSC_PORT = 9001
 
 # OpenShock Configuration
 OPENSHOCK_API_URL = "https://api.openshock.app/1/shockers/control"
@@ -32,7 +32,7 @@ PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 # ==========================================
 def resource_path(relative_path):
         try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            # Handle resources inside PyInstaller tempfolder
             base_path = sys._MEIPASS
         except Exception:
             base_path = os.path.abspath(".")
@@ -40,7 +40,8 @@ def resource_path(relative_path):
         return os.path.join(base_path, relative_path)
 
 # ==========================================
-
+# MAIN APPLICATION LOGIC
+# ==========================================
 class TailShockerApp:
     def __init__(self, root):
         self.root = root
@@ -49,22 +50,19 @@ class TailShockerApp:
         self.root.iconphoto(True, icon_image)
         self.root.geometry("500x700") 
         
-        # State variables
         self.is_active = True
         self.last_shock_time = 0.0
-        
         self.is_grabbed = False
         self.current_stretch = 0.0
         self.session_shock_count = 0
         
-        # Threading lock to prevent race conditions during API calls
         self.lock = threading.Lock()
 
         self._build_gui()
         self._start_osc_server()
 
     def _build_gui(self):
-        # Master Stop Button (Using a Label to bypass macOS Button color limits)
+        # Enable/Disable Button
         button_font = tkfont.Font(size=20, weight="bold")
         self.stop_btn = tk.Label(
             self.root, 
@@ -79,7 +77,7 @@ class TailShockerApp:
         self.stop_btn.pack(fill=tk.X, padx=10, pady=10, ipady=20)
         self.stop_btn.bind("<Button-1>", lambda event: self.toggle_active())
 
-        # Safety Sliders & Settings Frame
+        # Safety and Settings Frame
         slider_frame = tk.LabelFrame(self.root, text="Safety Caps & Settings", padx=10, pady=10)
         slider_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -130,7 +128,7 @@ class TailShockerApp:
         self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
         
-        # New Shock Counter Label
+        # Shock Counter Label
         self.shock_count_label = tk.Label(status_frame, text="Tail Pulls This Session: 0", font=("Helvetica", 10))
         self.shock_count_label.pack(side=tk.RIGHT)
 
@@ -239,7 +237,6 @@ class TailShockerApp:
             if response.status_code == 200:
                 self.log_message(f"SUCCESS: {action_type} command sent.")
                 
-                # Only log real shocks that successfully executed
                 if action_type == "Shock":
                     self.session_shock_count += 1
                     self.root.after(0, self._update_shock_count_ui)
@@ -268,14 +265,13 @@ class TailShockerApp:
             self.trigger_shock()
 
     def save_shock_stats(self):
-        # Save stats to a log file if any shocks occurred
         if self.session_shock_count > 0:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
                 with open("shock_log.txt", "a") as f:
                     f.write(f"[{timestamp}] Session ended. Total tail pulls: {self.session_shock_count}\n")
             except Exception as e:
-                pass # Fail silently on exit if file system is locked
+                pass
 
     def _start_osc_server(self):
         dispatcher = Dispatcher()
