@@ -21,7 +21,7 @@ OPENSHOCK_API_URL = "https://api.openshock.app/1/shockers/control"
 OPENSHOCK_API_KEY = "YOUR_API_KEY_HERE"
 SHOCKER_ID = "YOUR_SHOCKER_ID_HERE"
 
-# VRChat Parameter Paths (Update these when you expand the full paths)
+# VRChat Parameter Paths
 PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
 PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 # ==========================================
@@ -29,8 +29,8 @@ PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 class TailShockerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Mayu Tail Shock Controller")
-        self.root.geometry("500x620") # Slightly taller to fit the new slider
+        self.root.title("VRChat Tail OpenShock Controller")
+        self.root.geometry("500x700") 
         
         # State variables
         self.is_active = True
@@ -54,16 +54,14 @@ class TailShockerApp:
             bg="red", 
             fg="white", 
             font=button_font,
-            relief="raised",      # Makes it look 3D like a button
+            relief="raised",
             borderwidth=5,
-            cursor="hand2"        # Changes cursor to a hand on hover
+            cursor="hand2"
         )
         self.stop_btn.pack(fill=tk.X, padx=10, pady=10, ipady=20)
-        
-        # Bind left mouse click to the toggle function
         self.stop_btn.bind("<Button-1>", lambda event: self.toggle_active())
 
-        # Safety Sliders Frame
+        # Safety Sliders & Settings Frame
         slider_frame = tk.LabelFrame(self.root, text="Safety Caps & Settings", padx=10, pady=10)
         slider_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -86,21 +84,36 @@ class TailShockerApp:
             variable=self.max_duration_var
         ).pack(fill=tk.X)
 
-        # New Cooldown Slider
         self.cooldown_var = tk.DoubleVar(value=5.0)
         tk.Scale(
             slider_frame, 
             from_=1.0, to=10.0, 
             resolution=0.5,
             orient=tk.HORIZONTAL, 
-            label="Cooldown (Seconds)", 
+            label="Cooldown Between Triggers (Seconds)", 
             variable=self.cooldown_var
         ).pack(fill=tk.X)
 
+        # Test Mode Checkbox (Defaults to ON for safety)
+        self.test_mode_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            slider_frame, 
+            text="Test Mode (Send VIBRATIONS instead of Shocks)", 
+            variable=self.test_mode_var,
+            font=("Helvetica", 10, "bold"),
+            fg="blue"
+        ).pack(anchor="w", pady=(10, 0))
+
+        # Status Indicator
+        status_frame = tk.Frame(self.root)
+        status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+        tk.Label(status_frame, text="System Status:", font=("Helvetica", 12)).pack(side=tk.LEFT)
+        self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
+        self.status_label.pack(side=tk.LEFT, padx=10)
+
         # Log Text Box
-        tk.Label(self.root, text="Action Log:").pack(anchor="w", padx=10, pady=(10, 0))
         self.log_area = scrolledtext.ScrolledText(self.root, height=10, state='disabled')
-        self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
         
         self.log_message("System Started. Listening for OSC data...")
 
@@ -108,9 +121,11 @@ class TailShockerApp:
         self.is_active = not self.is_active
         if self.is_active:
             self.stop_btn.config(text="Disable", bg="red", relief="raised")
+            self.status_label.config(text="READY", fg="green")
             self.log_message("System ENABLED.")
         else:
             self.stop_btn.config(text="Enable", bg="green", relief="sunken")
+            self.status_label.config(text="DISABLED", fg="red")
             self.log_message("System DISABLED. Sending Active Halt command...")
             
             # Fire an immediate halt command in a background thread
@@ -132,32 +147,50 @@ class TailShockerApp:
                 return
                 
             current_time = time.time()
-            
-            # Use the UI slider value for cooldown calculation
             if current_time - self.last_shock_time < self.cooldown_var.get():
                 return 
                 
             self.last_shock_time = current_time
 
-        # Retrieve hard caps from the UI
+        # Start the visual cooldown timer on the main UI thread
+        self.root.after(0, self._update_cooldown_ui)
+
+        # Retrieve settings
         max_i = self.max_intensity_var.get()
         max_d = self.max_duration_var.get()
+        
+        # Check Test Mode
+        action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
 
         # Generate bounded random values
         duration_s = round(random.uniform(0.3, max_d), 2) if max_d > 0.3 else 0.3
         duration_ms = int(duration_s * 1000)
         intensity = random.randint(1, max_i) if max_i > 1 else 1
 
-        self.log_message(f"Triggering: {intensity}% intensity for {duration_s}s")
+        self.log_message(f"Triggering: {intensity}% intensity for {duration_s}s ({action_type})")
         
         threading.Thread(
             target=self.send_openshock_command, 
-            args=(intensity, duration_ms, "Shock"), 
+            args=(intensity, duration_ms, action_type), 
             daemon=True
         ).start()
 
+    def _update_cooldown_ui(self):
+        # Abort updating the UI if the user hit the emergency stop
+        if not self.is_active:
+            return 
+
+        time_passed = time.time() - self.last_shock_time
+        remaining_cooldown = self.cooldown_var.get() - time_passed
+        
+        if remaining_cooldown > 0:
+            self.status_label.config(text=f"COOLDOWN ({remaining_cooldown:.1f}s)", fg="orange")
+            # Loop this function again in 100 milliseconds
+            self.root.after(100, self._update_cooldown_ui)
+        else:
+            self.status_label.config(text="READY", fg="green")
+
     def send_halt_command(self):
-        # Sends an explicit Stop command to the API
         self.send_openshock_command(0, 0, "Stop")
 
     def send_openshock_command(self, intensity, duration_ms, action_type):
