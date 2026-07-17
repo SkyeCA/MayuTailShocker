@@ -38,6 +38,7 @@ class TailShockerApp:
         
         self.is_grabbed = False
         self.current_stretch = 0.0
+        self.session_shock_count = 0
         
         # Threading lock to prevent race conditions during API calls
         self.lock = threading.Lock()
@@ -94,22 +95,27 @@ class TailShockerApp:
             variable=self.cooldown_var
         ).pack(fill=tk.X)
 
-        # Test Mode Checkbox (Defaults to ON for safety)
+        # Test Mode Checkbox
         self.test_mode_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
             slider_frame, 
-            text="Test Mode/Vibrate Only", 
+            text="Test Mode (Vibrate Only)", 
             variable=self.test_mode_var,
             font=("Helvetica", 10, "bold"),
             fg="blue"
         ).pack(anchor="w", pady=(10, 0))
 
-        # Status Indicator
+        # Status Indicator Frame
         status_frame = tk.Frame(self.root)
         status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(status_frame, text="System State:", font=("Helvetica", 12)).pack(side=tk.LEFT)
+        
+        tk.Label(status_frame, text="System Status:", font=("Helvetica", 12)).pack(side=tk.LEFT)
         self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
+        
+        # New Shock Counter Label
+        self.shock_count_label = tk.Label(status_frame, text="Tail Pulls This Session: 0", font=("Helvetica", 10))
+        self.shock_count_label.pack(side=tk.RIGHT)
 
         # Log Text Box
         self.log_area = scrolledtext.ScrolledText(self.root, height=10, state='disabled')
@@ -126,9 +132,8 @@ class TailShockerApp:
         else:
             self.stop_btn.config(text="Enable", bg="green", relief="sunken")
             self.status_label.config(text="DISABLED", fg="red")
-            self.log_message("System DISABLED. Sending Active Halt command...")
+            self.log_message("System DISABLED. Sending stop command...")
             
-            # Fire an immediate halt command in a background thread
             threading.Thread(target=self.send_halt_command, daemon=True).start()
 
     def log_message(self, message):
@@ -152,17 +157,13 @@ class TailShockerApp:
                 
             self.last_shock_time = current_time
 
-        # Start the visual cooldown timer on the main UI thread
         self.root.after(0, self._update_cooldown_ui)
 
-        # Retrieve settings
         max_i = self.max_intensity_var.get()
         max_d = self.max_duration_var.get()
         
-        # Check Test Mode
         action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
 
-        # Generate bounded random values
         duration_s = round(random.uniform(0.3, max_d), 2) if max_d > 0.3 else 0.3
         duration_ms = int(duration_s * 1000)
         intensity = random.randint(1, max_i) if max_i > 1 else 1
@@ -176,7 +177,6 @@ class TailShockerApp:
         ).start()
 
     def _update_cooldown_ui(self):
-        # Abort updating the UI if the user hit the emergency stop
         if not self.is_active:
             return 
 
@@ -185,10 +185,12 @@ class TailShockerApp:
         
         if remaining_cooldown > 0:
             self.status_label.config(text=f"COOLDOWN ({remaining_cooldown:.1f}s)", fg="orange")
-            # Loop this function again in 100 milliseconds
             self.root.after(100, self._update_cooldown_ui)
         else:
             self.status_label.config(text="READY", fg="green")
+
+    def _update_shock_count_ui(self):
+        self.shock_count_label.config(text=f"Tail Pulls This Session: {self.session_shock_count}")
 
     def send_halt_command(self):
         self.send_openshock_command(0, 300, "Stop")
@@ -201,7 +203,6 @@ class TailShockerApp:
                 "Content-Type": "application/json"
             }
             
-            # The API expects a JSON array at the root, not an object
             payload = [
                 {
                     "id": SHOCKER_ID,
@@ -220,6 +221,11 @@ class TailShockerApp:
             
             if response.status_code == 200:
                 self.log_message(f"SUCCESS: {action_type} command sent.")
+                
+                # Only log real shocks that successfully executed
+                if action_type == "Shock":
+                    self.session_shock_count += 1
+                    self.root.after(0, self._update_shock_count_ui)
             else:
                 error_msg = f"ERROR: API returned {response.status_code}"
                 if response.text:
@@ -227,7 +233,7 @@ class TailShockerApp:
                 
                 self.log_message(error_msg)
                 
-        except Exception as e:
+        except Exception:
             self.log_message(f"FAIL SAFE TRIGGERED: Could not send {action_type} command.")
 
     def on_grabbed_update(self, address, *args):
@@ -241,9 +247,18 @@ class TailShockerApp:
             self.evaluate_state()
 
     def evaluate_state(self):
-        # Trigger condition: is_grabbed is True AND Stretch > 0.1
         if self.is_grabbed and self.current_stretch > 0.1:
             self.trigger_shock()
+
+    def save_shock_stats(self):
+        # Save stats to a log file if any shocks occurred
+        if self.session_shock_count > 0:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                with open("shock_log.txt", "a") as f:
+                    f.write(f"[{timestamp}] Session ended. Total tail pulls: {self.session_shock_count}\n")
+            except Exception as e:
+                pass # Fail silently on exit if file system is locked
 
     def _start_osc_server(self):
         dispatcher = Dispatcher()
@@ -260,6 +275,7 @@ def main():
     app = TailShockerApp(root)
     
     def on_closing():
+        app.save_shock_stats()
         app.server.shutdown()
         root.destroy()
         
