@@ -18,8 +18,8 @@ OSC_PORT = 9001 # Default VRChat OSC Receive Port
 
 # OpenShock Configuration
 OPENSHOCK_API_URL = "https://api.openshock.app/1/shockers/control"
-OPENSHOCK_API_KEY = "YOUR_API_KEY_HERE"
-SHOCKER_ID = "YOUR_SHOCKER_ID_HERE"
+OPENSHOCK_API_KEY = "837bdGIHHfMv9ijVeGqMzuDqWJthIdadNb0MaPPKmOXVh92JkdR0klTZyccQV73j"
+SHOCKER_ID = "019f6765-ad55-79cb-aaf9-19ebab56b811"
 
 # VRChat Parameter Paths
 PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
@@ -36,7 +36,7 @@ class TailShockerApp:
         self.is_active = True
         self.last_shock_time = 0.0
         
-        self.current_grabbed = 0.0
+        self.is_grabbed = False
         self.current_stretch = 0.0
         
         # Threading lock to prevent race conditions during API calls
@@ -191,7 +191,7 @@ class TailShockerApp:
             self.status_label.config(text="READY", fg="green")
 
     def send_halt_command(self):
-        self.send_openshock_command(0, 0, "Stop")
+        self.send_openshock_command(0, 300, "Stop")
 
     def send_openshock_command(self, intensity, duration_ms, action_type):
         try:
@@ -201,17 +201,15 @@ class TailShockerApp:
                 "Content-Type": "application/json"
             }
             
-            payload = {
-                "shocks": [
-                    {
-                        "id": SHOCKER_ID,
-                        "intensity": intensity,
-                        "duration": duration_ms,
-                        "type": action_type
-                    }
-                ],
-                "customName": f"VRChat Tail Pull ({action_type})"
-            }
+            # The API expects a JSON array at the root, not an object
+            payload = [
+                {
+                    "id": SHOCKER_ID,
+                    "type": action_type,
+                    "intensity": intensity,
+                    "duration": duration_ms
+                }
+            ]
 
             response = requests.post(
                 OPENSHOCK_API_URL, 
@@ -223,14 +221,18 @@ class TailShockerApp:
             if response.status_code == 200:
                 self.log_message(f"SUCCESS: {action_type} command sent.")
             else:
-                self.log_message(f"ERROR: API returned {response.status_code}")
+                error_msg = f"ERROR: API returned {response.status_code}"
+                if response.text:
+                    error_msg += f" - Details: {response.text.strip()}"
                 
-        except Exception:
+                self.log_message(error_msg)
+                
+        except Exception as e:
             self.log_message(f"FAIL SAFE TRIGGERED: Could not send {action_type} command.")
 
     def on_grabbed_update(self, address, *args):
         if args:
-            self.current_grabbed = float(args[0])
+            self.is_grabbed = bool(args[0])
             self.evaluate_state()
 
     def on_stretch_update(self, address, *args):
@@ -239,7 +241,8 @@ class TailShockerApp:
             self.evaluate_state()
 
     def evaluate_state(self):
-        if self.current_grabbed > 0 and self.current_stretch > 0.1:
+        # Trigger condition: is_grabbed is True AND Stretch > 0.1
+        if self.is_grabbed and self.current_stretch > 0.1:
             self.trigger_shock()
 
     def _start_osc_server(self):
