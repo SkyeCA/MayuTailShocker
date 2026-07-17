@@ -1,12 +1,15 @@
-# Mayu Tail Shock Controller
+# Mayu Tail Shocker
 
 ![The program icon](/resources/icon.png)
 
 ## Overview
 This is a Python based application created to send random shock commands to an OpenShock shocker when the tail
-of a Mayu is pulled.
+of a Mayu* is pulled.
 
 __This project is not currently PiShock compatible!__
+
+* This will work on any avatar with a PhysBone that can be grabbed and pulled, but additional setup might be
+required on your avatar and to this program's configuration.
 
 ## Requirements
 
