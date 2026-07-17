@@ -29,7 +29,7 @@ PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 class TailShockerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("VRChat Tail OpenShock Controller")
+        self.root.title("Mayu Tail Shock Controller")
         self.root.geometry("500x700") 
         
         # State variables
@@ -90,7 +90,7 @@ class TailShockerApp:
             from_=1.0, to=10.0, 
             resolution=0.5,
             orient=tk.HORIZONTAL, 
-            label="Cooldown Between Triggers (Seconds)", 
+            label="Cooldown Between Events (Seconds)", 
             variable=self.cooldown_var
         ).pack(fill=tk.X)
 
@@ -98,7 +98,7 @@ class TailShockerApp:
         self.test_mode_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
             slider_frame, 
-            text="Test Mode (Send VIBRATIONS instead of Shocks)", 
+            text="Test Mode/Vibrate Only", 
             variable=self.test_mode_var,
             font=("Helvetica", 10, "bold"),
             fg="blue"
@@ -107,7 +107,7 @@ class TailShockerApp:
         # Status Indicator
         status_frame = tk.Frame(self.root)
         status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(status_frame, text="System Status:", font=("Helvetica", 12)).pack(side=tk.LEFT)
+        tk.Label(status_frame, text="System State:", font=("Helvetica", 12)).pack(side=tk.LEFT)
         self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
 
