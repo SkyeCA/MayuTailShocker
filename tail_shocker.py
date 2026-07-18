@@ -5,6 +5,7 @@ import threading
 import time
 import random
 import json
+import math
 import webbrowser
 from datetime import datetime
 from pythonosc.dispatcher import Dispatcher
@@ -336,10 +337,6 @@ class TailShockerApp:
             self.ws.send(json.dumps(payload))
             if log_success:
                 self.log_message(f"SUCCESS (WS): {action_type} command sent.")
-            
-            if action_type == "Shock":
-                self.session_shock_count += 1
-                self.root.after(0, self._update_shock_count_ui)
         except Exception as e:
             if log_success:
                 self.log_message(f"FAIL SAFE TRIGGERED: Could not send {action_type} command over WS.")
@@ -491,9 +488,14 @@ class TailShockerApp:
         duration_ms = int(duration_s * 1000)
         intensity = random.randint(1, max_i) if max_i > 1 else 1
 
+        # RESTORED: One burst = exactly one shock on the counter
+        if action_type == "Shock":
+            self.session_shock_count += 1
+            self.root.after(0, self._update_shock_count_ui)
+
         self.log_message(f"Triggering Burst: {intensity}% intensity for {duration_s}s ({action_type})")
         threading.Thread(target=self.send_openshock_command, args=(intensity, duration_ms, action_type), daemon=True).start()
-
+        
     def dynamic_shock_loop(self):
         with self.lock:
             if self.is_dynamic_loop_running:
@@ -501,6 +503,14 @@ class TailShockerApp:
             self.is_dynamic_loop_running = True
             
         self.log_message("Dynamic Stretch Interaction: STARTED.")
+
+        # NEW: Immediately count the initial interaction (under 1s = 1)
+        is_real_shock = not self.test_mode_var.get()
+        if is_real_shock:
+            self.session_shock_count += 1
+            self.root.after(0, self._update_shock_count_ui)
+            
+        accumulated_time = 0.0
 
         while self.is_active and self.dynamic_mode_var.get() and self.is_grabbed and self.current_stretch > 0.1:
             max_i = self.max_intensity_var.get()
@@ -516,6 +526,14 @@ class TailShockerApp:
             self.send_openshock_command(intensity, duration_ms, action_type, log_success=False) 
             
             time.sleep(0.2)
+            
+            # NEW: Add up the loop time, every 1.0s = +1 shock
+            if is_real_shock:
+                accumulated_time += 0.2
+                if accumulated_time >= 1.0:
+                    self.session_shock_count += 1
+                    self.root.after(0, self._update_shock_count_ui)
+                    accumulated_time -= 1.0
             
         if self.is_active:
             self.send_openshock_command(0, 300, "Stop", log_success=False)
