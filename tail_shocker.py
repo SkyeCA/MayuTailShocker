@@ -4,12 +4,13 @@ from tkinter import font as tkfont
 import threading
 import time
 import random
-import requests
 import json
 import webbrowser
 from datetime import datetime
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
+import websocket  # Requires: pip install websocket-client
+import requests
 import sys
 import os
 
@@ -18,7 +19,9 @@ import os
 # ==========================================
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9001 
-OPENSHOCK_API_URL = "https://api.openshock.app/1/shockers/control"
+
+# OpenShock Live Control Gateway Base URL
+OPENSHOCK_WS_GW = "wss://de1-gateway.openshock.app"
 
 DEFAULT_PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
 DEFAULT_PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
@@ -102,12 +105,17 @@ class TailShockerApp:
         self.session_shock_count = 0
         self.is_dynamic_loop_running = False
         
+        self.ws = None
+        self.ws_connected = False
         self.lock = threading.Lock()
 
         self._build_menu()
         self._build_gui()
         self._load_config()
         self._start_osc_server()
+        
+        # Start the WebSocket connection manager
+        threading.Thread(target=self._websocket_thread_loop, daemon=True).start()
 
     def _build_menu(self):
         menubar = tk.Menu(self.root)
@@ -169,7 +177,7 @@ class TailShockerApp:
             from_=1.0, to=10.0, 
             resolution=0.5,
             orient=tk.HORIZONTAL, 
-            label="Cooldown Between Shocks (Seconds)", 
+            label="Cooldown Between Triggers (Seconds)", 
             variable=self.cooldown_var
         )
         self.cooldown_slider.pack(fill=tk.X)
@@ -177,7 +185,7 @@ class TailShockerApp:
         self.test_mode_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
             slider_frame, 
-            text="Test Mode/Vibrate Only", 
+            text="Test Mode (Send VIBRATIONS instead of Shocks)", 
             variable=self.test_mode_var,
             font=("Helvetica", 10, "bold"),
             fg="blue"
@@ -188,7 +196,7 @@ class TailShockerApp:
         self.dynamic_mode_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
             slider_frame, 
-            text="Dynamic Mode (Intensity continuously scales with pull)", 
+            text="Dynamic Stretch Mode (Intensity scales with pull, continuous)", 
             variable=self.dynamic_mode_var,
             font=("Helvetica", 10, "bold"),
             fg="purple",
@@ -202,7 +210,7 @@ class TailShockerApp:
         self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
         
-        self.shock_count_label = tk.Label(status_frame, text="Tail Pulls This Session: 0", font=("Helvetica", 10))
+        self.shock_count_label = tk.Label(status_frame, text="Shocks This Session: 0", font=("Helvetica", 10))
         self.shock_count_label.pack(side=tk.RIGHT)
 
         self.log_area = scrolledtext.ScrolledText(self.root, height=10, state='disabled')
@@ -210,6 +218,138 @@ class TailShockerApp:
         
         self.log_message("System Started. Listening for OSC data...")
 
+    # ==========================================
+    # WEBSOCKET MANAGEMENT
+    # ==========================================
+    def _websocket_thread_loop(self):
+        """ Keeps the websocket connected, reconnects on failure, and automates API discovery """
+        while True:
+            if self.api_key and self.shocker_id and self.is_active:
+                
+                # Standard Headers for HTTP Discovery
+                http_headers = {
+                    "accept": "application/json",
+                    "OpenShockToken": self.api_key,
+                    "User-Agent": "MayuTailShocker/1.0 (skey@vore.my)"
+                }
+
+                try:
+                    # --- DISCOVERY STEP 1: Get the parent Device/Hub ID ---
+                    self.log_message("Discovery: Fetching parent Hub ID...")
+                    shocker_res = requests.get(
+                        f"https://api.openshock.app/1/shockers/{self.shocker_id}", 
+                        headers=http_headers, 
+                        timeout=5.0
+                    )
+                    
+                    if shocker_res.status_code != 200:
+                        self.log_message(f"Discovery Error: Could not verify Shocker (HTTP {shocker_res.status_code})")
+                        time.sleep(5)
+                        continue
+                        
+                    hub_id = shocker_res.json().get("data", {}).get("device")
+                    if not hub_id:
+                        self.log_message("Discovery Error: Shocker is not linked to a Hub.")
+                        time.sleep(5)
+                        continue
+
+                    # --- DISCOVERY STEP 2: Get the Regional Gateway ---
+                    self.log_message("Discovery: Fetching Regional Gateway...")
+                    lcg_res = requests.get(
+                        f"https://api.openshock.app/2/devices/{hub_id}/lcg", 
+                        headers=http_headers, 
+                        timeout=5.0
+                    )
+                    
+                    if lcg_res.status_code != 200:
+                        self.log_message(f"Discovery Error: Hub is offline or missing (HTTP {lcg_res.status_code})")
+                        time.sleep(5)
+                        continue
+                        
+                    host = lcg_res.json().get("host")
+                    if not host:
+                        self.log_message("Discovery Error: No gateway host returned.")
+                        time.sleep(5)
+                        continue
+
+                    # --- WEBSOCKET CONNECTION ---
+                    # Build the secure URL using the discovered Host and Hub ID
+                    ws_url = f"wss://{host}/1/ws/live/{hub_id}"
+                    
+                    # WebSocket specific headers (List of strings, not a dict)
+                    ws_headers = [
+                        f"OpenShockToken: {self.api_key}",
+                        "User-Agent: MayuTailShocker/1.0 (Python)"
+                    ]
+                    
+                    self.log_message(f"Connecting WebSocket to: {host}")
+                    
+                    self.ws = websocket.WebSocketApp(
+                        ws_url,
+                        header=ws_headers,
+                        on_open=self._on_ws_open,
+                        on_message=self._on_ws_message,
+                        on_error=self._on_ws_error,
+                        on_close=self._on_ws_close
+                    )
+                    
+                    # Run with Ping/Pong intervals to prevent silent idle disconnects
+                    self.ws.run_forever(ping_interval=30, ping_timeout=10)
+
+                except Exception as e:
+                    self.log_message(f"Connection Manager Error: {e}")
+            
+            self.ws_connected = False
+            # Wait 3 seconds before retrying the entire discovery/connection pipeline
+            time.sleep(3)
+
+    def _on_ws_open(self, ws):
+        self.ws_connected = True
+        self.log_message("WebSocket Connected Successfully to Live Gateway.")
+
+    def _on_ws_message(self, ws, message):
+        pass 
+
+    def _on_ws_error(self, ws, error):
+        self.log_message(f"WebSocket Error: {error}")
+
+    def _on_ws_close(self, ws, close_status_code, close_msg):
+        self.ws_connected = False
+        self.log_message("WebSocket Disconnected. Attempting to reconnect...")
+
+    def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
+        if not self.ws_connected or not self.ws:
+            if log_success:
+                self.log_message("Failed to send command: WebSocket not connected.")
+            return
+
+        payload = {
+            "action": "control", 
+            "data": [
+                {
+                    "id": self.shocker_id,
+                    "type": action_type,
+                    "intensity": intensity,
+                    "duration": duration_ms
+                }
+            ]
+        }
+
+        try:
+            self.ws.send(json.dumps(payload))
+            if log_success:
+                self.log_message(f"SUCCESS (WS): {action_type} command sent.")
+            
+            if action_type == "Shock":
+                self.session_shock_count += 1
+                self.root.after(0, self._update_shock_count_ui)
+        except Exception as e:
+            if log_success:
+                self.log_message(f"FAIL SAFE TRIGGERED: Could not send {action_type} command over WS.")
+
+    # ==========================================
+    # CONFIG & UI LOGIC
+    # ==========================================
     def _load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -241,6 +381,8 @@ class TailShockerApp:
         if modal.result:
             old_grabbed = self.param_grabbed
             old_stretch = self.param_stretch
+            old_key = self.api_key
+            old_id = self.shocker_id
 
             self.api_key = modal.result["api_key"]
             self.shocker_id = modal.result["shocker_id"]
@@ -262,6 +404,10 @@ class TailShockerApp:
             if old_grabbed != self.param_grabbed or old_stretch != self.param_stretch:
                 self.log_message("OSC Parameters changed. Restarting OSC listener...")
                 threading.Thread(target=self._restart_osc_server, daemon=True).start()
+                
+            # If the API key OR Shocker ID changes, force the websocket to drop and reconnect with the new URL
+            if (old_key != self.api_key or old_id != self.shocker_id) and self.ws:
+                self.ws.close()
 
     def open_github(self):
         webbrowser.open("https://github.com/SkyeCA/MayuTailShocker")
@@ -293,23 +439,27 @@ class TailShockerApp:
         if self.dynamic_mode_var.get():
             self.max_duration_slider.config(state=tk.DISABLED, fg="gray")
             self.cooldown_slider.config(state=tk.DISABLED, fg="gray")
-            self.log_message("MODE SWITCH: Dynamic Mode enabled.")
+            self.log_message("MODE SWITCH: Dynamic Stretch Mode enabled.")
         else:
             self.max_duration_slider.config(state=tk.NORMAL, fg="black")
             self.cooldown_slider.config(state=tk.NORMAL, fg="black")
-            self.log_message("MODE SWITCH: Random Mode enabled.")
+            self.log_message("MODE SWITCH: Random Burst Mode enabled.")
 
     def toggle_active(self):
         self.is_active = not self.is_active
         if self.is_active:
             self.stop_btn.config(text="Disable", bg="red", relief="raised")
             self.status_label.config(text="READY", fg="green")
-            self.log_message("System ENABLED.")
+            self.log_message("System ARMED.")
+            if not self.ws_connected and self.ws:
+                self.ws.close() 
         else:
             self.stop_btn.config(text="Enable", bg="green", relief="sunken")
             self.status_label.config(text="DISABLED", fg="red")
-            self.log_message("System DISABLED. Sending Active Halt command...")
+            self.log_message("System DISARMED. Sending Active Halt command...")
             threading.Thread(target=self.send_halt_command, daemon=True).start()
+            if self.ws:
+                self.ws.close()
 
     def log_message(self, message):
         self.root.after(0, self._safe_log, message)
@@ -353,12 +503,11 @@ class TailShockerApp:
                 return
             self.is_dynamic_loop_running = True
             
-        self.log_message("Dynamic Interaction: STARTED.")
+        self.log_message("Dynamic Stretch Interaction: STARTED.")
 
         while self.is_active and self.dynamic_mode_var.get() and self.is_grabbed and self.current_stretch > 0.1:
             max_i = self.max_intensity_var.get()
             
-            # Scale intensity safely between 1 and max
             stretch_clamped = min(max(self.current_stretch, 0.0), 1.0)
             intensity = int(stretch_clamped * max_i)
             if intensity < 1:
@@ -366,17 +515,15 @@ class TailShockerApp:
                 
             action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
             
-            # Send 600ms pulses every 300ms to create overlapping fail-safes
-            duration_ms = 600 
+            duration_ms = 400 
             self.send_openshock_command(intensity, duration_ms, action_type, log_success=False) 
             
-            time.sleep(0.3)
+            time.sleep(0.2)
             
-        # Immediately halt the active interaction if released or disabled
         if self.is_active:
             self.send_openshock_command(0, 300, "Stop", log_success=False)
             
-        self.log_message("Dynamic Mode Interaction: ENDED.")
+        self.log_message("Dynamic Stretch Interaction: ENDED.")
 
         with self.lock:
             self.is_dynamic_loop_running = False
@@ -398,53 +545,10 @@ class TailShockerApp:
             self.status_label.config(text="READY", fg="green")
 
     def _update_shock_count_ui(self):
-        self.shock_count_label.config(text=f"Tail Pulls This Session: {self.session_shock_count}")
+        self.shock_count_label.config(text=f"Shocks This Session: {self.session_shock_count}")
 
     def send_halt_command(self):
         self.send_openshock_command(0, 300, "Stop")
-
-    def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
-        if not self.api_key or not self.shocker_id:
-            return
-
-        try:
-            headers = {
-                "accept": "application/json",
-                "OpenShockToken": self.api_key,
-                "Content-Type": "application/json"
-            }
-            
-            payload = [
-                {
-                    "id": self.shocker_id,
-                    "type": action_type,
-                    "intensity": intensity,
-                    "duration": duration_ms
-                }
-            ]
-
-            response = requests.post(
-                OPENSHOCK_API_URL, 
-                headers=headers, 
-                data=json.dumps(payload),
-                timeout=2.0 
-            )
-            
-            if response.status_code == 200:
-                if log_success:
-                    self.log_message(f"SUCCESS: {action_type} command sent.")
-                if action_type == "Shock":
-                    self.session_shock_count += 1
-                    self.root.after(0, self._update_shock_count_ui)
-            else:
-                error_msg = f"ERROR: API returned {response.status_code}"
-                if response.text:
-                    error_msg += f" - Details: {response.text.strip()}"
-                self.log_message(error_msg)
-                
-        except Exception:
-            if log_success:
-                self.log_message(f"FAIL SAFE TRIGGERED: Could not send {action_type} command.")
 
     def on_grabbed_update(self, address, *args):
         if args:
@@ -498,6 +602,8 @@ class TailShockerApp:
             self.server.shutdown()
         except Exception:
             pass
+        if self.ws:
+            self.ws.close()
         self.root.quit()
         self.root.destroy()
 
