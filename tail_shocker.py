@@ -20,9 +20,6 @@ import os
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9001 
 
-# OpenShock Live Control Gateway Base URL
-OPENSHOCK_WS_GW = "wss://de1-gateway.openshock.app"
-
 DEFAULT_PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
 DEFAULT_PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 
