@@ -7,8 +7,7 @@ import random
 import json
 import webbrowser
 from datetime import datetime
-import math
-import requests  # Requires: pip install requests
+import requests 
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
@@ -16,7 +15,7 @@ import sys
 import os
 
 # ==========================================
-# CONSTANTS & PERSISTENT FILE PATH
+# CONSTANTS
 # ==========================================
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9001 
@@ -26,7 +25,7 @@ OSC_SEND_PORT = 9000
 DEFAULT_PARAM_GRABBED = "/avatar/parameters/Tail/_IsGrabbed"
 DEFAULT_PARAM_STRETCH = "/avatar/parameters/Tail/_Stretch"
 
-# New 2-Way Radial Menu Parameters
+# In Game Control Parameters
 MTS_ENABLE = "/avatar/parameters/MTS_Enable"
 MTS_VIBRATE = "/avatar/parameters/MTS_VibrateMode"
 MTS_DYNAMIC = "/avatar/parameters/MTS_DynamicMode"
@@ -47,6 +46,10 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+
+# ==========================================
+# UI MODALS
+# ==========================================
 class APIConfigModal(simpledialog.Dialog):
     def __init__(self, parent, title, current_key):
         self.current_key = current_key
@@ -135,7 +138,6 @@ class ShockerConfigModal(simpledialog.Dialog):
         tk.Button(ctrl_frame, text="Add", command=self.add_id).pack(side=tk.LEFT, padx=(0, 5))
         tk.Button(ctrl_frame, text="Remove Selected", command=self.remove_id).pack(side=tk.LEFT)
         
-        # Enforce initial radio button state
         self._update_radio_states()
         
         return self.new_id_entry
@@ -168,6 +170,9 @@ class ShockerConfigModal(simpledialog.Dialog):
             "shocker_mode": self.mode_var.get()
         }
 
+# ==========================================
+# Main Logic
+# ==========================================
 class TailShockerApp:
     def __init__(self, root):
         self.root = root
@@ -195,7 +200,6 @@ class TailShockerApp:
         self.is_dynamic_loop_running = False
         self.lock = threading.Lock()
         
-        # OSC Client/Server setup 
         self.osc_client = SimpleUDPClient(OSC_IP, OSC_SEND_PORT)
         self._updating_from_osc = False 
 
@@ -281,16 +285,12 @@ class TailShockerApp:
         self.log_area = scrolledtext.ScrolledText(self.root, height=10, state='disabled')
         self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
 
-        # --- Bind Traces to send OSC updates to VRChat when user interacts with GUI ---
         self.max_intensity_var.trace_add("write", lambda *_: self._send_osc_if_user(MTS_INTENSITY, self.max_intensity_var.get() / 100.0))
         self.max_duration_var.trace_add("write", lambda *_: self._send_osc_if_user(MTS_DURATION, self.max_duration_var.get() / 10.0))
         self.cooldown_var.trace_add("write", lambda *_: self._send_osc_if_user(MTS_COOLDOWN, self.cooldown_var.get() / 10.0))
         self.test_mode_var.trace_add("write", lambda *_: self._send_osc_if_user(MTS_VIBRATE, self.test_mode_var.get()))
         self.dynamic_mode_var.trace_add("write", self._on_dynamic_mode_changed)
 
-    # ==========================================
-    # OSC 2-WAY SYNC & LOGIC
-    # ==========================================
     def _send_osc_if_user(self, address, value):
         if not self._updating_from_osc:
             try:
@@ -322,7 +322,6 @@ class TailShockerApp:
             self.log_message("Random Mode enabled.")
         self._send_osc_if_user(MTS_DYNAMIC, self.dynamic_mode_var.get())
 
-    # --- Incoming VRChat Menu Handlers ---
     def on_mts_enable(self, address, *args):
         if args:
             target_state = bool(args[0])
@@ -358,9 +357,6 @@ class TailShockerApp:
                 seconds = 1.0 
             self.root.after(0, self._set_var_from_osc, self.cooldown_var, round(seconds, 1))
 
-    # ==========================================
-    # CORE COMMUNICATION (HTTPS REST API)
-    # ==========================================
     def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
         if not self.api_key or not self.shocker_ids:
             return
@@ -370,12 +366,10 @@ class TailShockerApp:
         action_map = {"Stop": 0, "Shock": 1, "Vibrate": 2, "Sound": 3}
         action_int = action_map.get(action_type, 2)
 
-        # Handle Routing Mode
         target_ids = self.shocker_ids
         if self.shocker_mode == "Random" and len(self.shocker_ids) > 1:
             target_ids = [random.choice(self.shocker_ids)]
 
-        # Build dynamic array for all targeted shockers
         shocks_payload = []
         for sid in target_ids:
             shocks_payload.append({
@@ -408,9 +402,6 @@ class TailShockerApp:
             if log_success:
                 self.log_message("FAIL SAFE: Could not send command (HTTP Timeout/Error).")
 
-    # ==========================================
-    # CONFIG & SYSTEM LOGIC
-    # ==========================================
     def _load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -422,13 +413,12 @@ class TailShockerApp:
                     self.param_grabbed = data.get("param_grabbed") or DEFAULT_PARAM_GRABBED
                     self.param_stretch = data.get("param_stretch") or DEFAULT_PARAM_STRETCH
                     
-                    # Migration: Convert old single shocker ID to the new list format
+                    # Convert old single shocker config
                     if "shocker_id" in data and data["shocker_id"]:
                         if data["shocker_id"] not in self.shocker_ids:
                             self.shocker_ids.append(data["shocker_id"])
-                        self._save_config() # Save the migrated file
+                        self._save_config()
                     
-                    # Safeguard: Enforce "All" if 1 or 0 shockers exist during load
                     if len(self.shocker_ids) <= 1:
                         self.shocker_mode = "All"
                         
@@ -441,7 +431,6 @@ class TailShockerApp:
         self.log_message("SETUP REQUIRED: Go to File > API Config to add your API Key, then File > Shocker Config to add Shockers.")
 
     def _save_config(self):
-        """Unified save function to ensure no settings are accidentally overwritten."""
         try:
             with open(CONFIG_FILE, 'w') as f:
                 json.dump({
@@ -661,8 +650,6 @@ class TailShockerApp:
         dispatcher = Dispatcher()
         dispatcher.map(self.param_grabbed, self.on_grabbed_update)
         dispatcher.map(self.param_stretch, self.on_stretch_update)
-        
-        # New Menu Listeners
         dispatcher.map(MTS_ENABLE, self.on_mts_enable)
         dispatcher.map(MTS_VIBRATE, self.on_mts_vibrate)
         dispatcher.map(MTS_DYNAMIC, self.on_mts_dynamic)
