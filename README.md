@@ -91,7 +91,7 @@ The prefab for this project adds a set of options to the VRC radial menu for con
 
 ## Screenshots
 
-![A screenshot of the program running](/resources/sreenshot.jpg)
+![A screenshot of the program running](/resources/screenshot.jpg)
 
 ## AI Disclaimer
 
