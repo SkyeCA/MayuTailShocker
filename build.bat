@@ -1,9 +1,8 @@
 @echo off
 echo ========================================
-echo  Mayu Tail Shock Controller Build
+echo  Mayu Tail Shocker Build
 echo ========================================
 
-REM Check if the virtual environment exists by looking for the activate script
 IF NOT EXIST "venv\Scripts\activate.bat" (
     echo [!] Virtual environment not found. Creating "venv"...
     python -m venv venv
@@ -23,14 +22,23 @@ IF NOT EXIST "venv\Scripts\activate.bat" (
 
 echo [*] Building EXE with PyInstaller...
 
-REM Run PyInstaller with the following flags:
-REM --noconfirm: Overwrite existing build folders automatically
-REM --onefile: Bundle everything into a single .exe
-REM --windowed: Hide the background command prompt window when running
-REM --icon: Apply the custom icon to the .exe file itself
-REM --add-data: Bundle the icon image into the exe so Tkinter can load it later
+pyinstaller -n "MayuTailShocker" --noconsole --onefile --icon=resources/icon.png --add-data "resources/icon.png;resources" --version-file=version_info.txt tail_shocker.py
 
-pyinstaller --noconfirm --onefile --windowed --icon="resources\icon.png" --add-data="resources\icon.png;resources" tail_shocker.py
+echo [*] Signing the Executable...
+
+powershell -NoProfile -Command ^
+    "$certName = 'CN=MayuTailShocker'; " ^
+    "$cert = Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object { $_.Subject -eq $certName } | Select-Object -First 1; " ^
+    "if (-not $cert) { " ^
+    "    Write-Host 'Generating new self-signed certificate...'; " ^
+    "    $cert = New-SelfSignedCertificate -Subject $certName -Type CodeSigningCert -CertStoreLocation 'Cert:\CurrentUser\My'; " ^
+    "} else { " ^
+    "    Write-Host 'Found existing certificate, reusing...'; " ^
+    "} " ^
+    "Write-Host 'Signing dist\MayuTailShocker.exe...'; " ^
+    "$sig = Set-AuthenticodeSignature -FilePath '.\dist\MayuTailShocker.exe' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com'; " ^
+    "if ($sig.Status -eq 'Valid') { Write-Host 'Signature applied successfully!' -ForegroundColor Green } " ^
+    "else { Write-Host ('Signature failed: ' + $sig.StatusMessage) -ForegroundColor Red }"
 
 echo ========================================
 echo  Build Complete! 
