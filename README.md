@@ -1,7 +1,5 @@
 # Mayu Tail Shocker
 
-![The program icon](/resources/icon.png)
-
 ## Overview
 This is a Python based application created to send random shock commands to OpenShock shockers when the tail
 of a Mayu* is pulled.
@@ -57,10 +55,6 @@ To compile a standalone executable from source:
 1. Install PyInstaller (pip install pyinstaller).
 2. Run the provided build.bat file in the project directory to automatically compile the application.
 
-## Screenshots
-
-![A screenshot of the program running](/resources/sreenshot.jpg)
-
 ## Avatar Control Prefab
 
 ### Avatar Setup
@@ -76,11 +70,11 @@ To compile a standalone executable from source:
 
 The prefab for this project adds a set of options to the VRC radial menu for controlling application settings. These options are placed in a submenu called "Mayu Tail Shocker" by default.
 
-Options:
+#### Options:
 
 - __Enable:__ Enables or disables the application. When disabled no shocks will occur.
 - __Vibrate Only:__ Enables or disables vibration only mode. When enabled the shocker will vibrate, but not shock the user.
-- __Dynamic Mode:__ Enables or disables the shock intensity and duration based on the stretch amount of the tail/physbone.
+- __Dynamic Mode:__ Enables a mode which uses the grab state and stretch amount of the tail/physbone to determine intensity and duration.
 - __Max Intensity:__ The maximum intensity the user can be shocked from 0% to 100%.
 - __Max Duration:__ The maximum length of time a single shock can shock the user. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
 - __Cooldown:__ The time after a shock before another shock can occur. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
@@ -95,9 +89,13 @@ Options:
 - Duration icon: https://www.flaticon.com/free-icon/hourglass_786017
 - Cooldown icon: https://www.flaticon.com/free-icon/yield_678594
 
+## Screenshots
+
+![A screenshot of the program running](/resources/sreenshot.jpg)
+
 ## AI Disclaimer
 
-AI was used to create some parts of this project however I have personally tested everything and addressed edge cases where required.
+AI was used to create _some_ parts of this project however I have personally tested everything and addressed edge cases where required.
 
 If you have an issue with this please do no not contact me.
 
