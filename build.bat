@@ -35,6 +35,14 @@ powershell -NoProfile -Command ^
     "} else { " ^
     "    Write-Host 'Found existing certificate, reusing...'; " ^
     "} " ^
+    "$rootStore = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'CurrentUser'); " ^
+    "$rootStore.Open('ReadWrite'); " ^
+    "$trusted = $rootStore.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }; " ^
+    "if (-not $trusted) { " ^
+    "    Write-Host 'Adding certificate to Trusted Root (Please click YES on the Windows popup)...' -ForegroundColor Yellow; " ^
+    "    $rootStore.Add($cert); " ^
+    "} " ^
+    "$rootStore.Close(); " ^
     "Write-Host 'Signing dist\MayuTailShocker.exe...'; " ^
     "$sig = Set-AuthenticodeSignature -FilePath '.\dist\MayuTailShocker.exe' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com'; " ^
     "if ($sig.Status -eq 'Valid') { Write-Host 'Signature applied successfully!' -ForegroundColor Green } " ^
