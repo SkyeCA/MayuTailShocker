@@ -41,19 +41,20 @@ To run the program from source:
 1. Open your terminal or command prompt.
 2. Install the required dependencies:
    ```bash
-   pip install requests python-osc
+   pip install -r requirements.txt
    ```
 3. Run the script:
    ```bash
    python tail_shocker.py
    ```
 
+Note: I highly recommend using venv when running this from source.
+
 ### How to Build
 
 To compile a standalone executable from source:
 
-1. Install PyInstaller (pip install pyinstaller).
-2. Run the provided build.bat file in the project directory to automatically compile the application.
+1. Run the provided build.bat file in the project directory to automatically compile the application.
 
 ## Avatar Control Prefab
 
@@ -74,9 +75,10 @@ The prefab for this project adds a set of options to the VRC radial menu for con
 
 - __Enable:__ Enables or disables the application. When disabled no shocks will occur.
 - __Vibrate Only:__ Enables or disables vibration only mode. When enabled the shocker will vibrate, but not shock the user.
-- __Dynamic Mode:__ Enables a mode which uses the grab state and stretch amount of the tail/physbone to determine intensity and duration.
+- __Dynamic Mode:__ Enables a mode which uses the grab state and stretch amount of the tail/physbone to determine the intensity and duration of the shock.
 - __Max Intensity:__ The maximum intensity the user can be shocked from 0% to 100%.
 - __Max Duration:__ The maximum length of time a single shock can shock the user. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
+  - Note: For OpenShock the minimum shock duration is 300ms, so 1%, 2% and 3% all trigger a 300ms shock.
 - __Cooldown:__ The time after a shock before another shock can occur. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
 
 ## Third Party Resources
