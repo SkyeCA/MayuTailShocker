@@ -31,6 +31,10 @@ You can find the latest pre-built versions of this program and a Unity prefab fo
 *   OSC enabled in the VRChat radial menu (Options -> OSC -> Enabled).
 *   An avatar configured with a PhysBone on the tail, set up with `_IsGrabbed` and `_Stretch` parameters and the ability to be grabbed and stretched.
 
+### Physbone Parameter Setup
+
+![Physbone Setup](/resources/physbone_setup.jpg)
+
 ## Desktop App
 
 ### How to Run 
@@ -66,7 +70,7 @@ To compile a standalone executable from source:
 3. Import the Mayu Tail Shocker Unity package into your project.
 4. Drag the prefab directly onto your avatar's root in the project hierarchy.
 
-## How to Use
+### How to Use
 
 ![A screenshot of the in game control](/resources/menu.jpg)
 
@@ -83,14 +87,19 @@ Options:
 
 ## Third Party Resources
 
-Program icon: https://www.flaticon.com/free-icon/flash_657908
-Enable icon: https://www.flaticon.com/free-icon/power-switch_4139573
-Vibrate icon: https://www.flaticon.com/free-icon/ring_14533511
-Dynamic icon: https://www.flaticon.com/free-icon/line-graph_920199
-Intensity icon: https://www.flaticon.com/free-icon/thermostat_4117629
-Duration icon: https://www.flaticon.com/free-icon/hourglass_786017
-Cooldown icon: https://www.flaticon.com/free-icon/yield_678594
+- Program icon: https://www.flaticon.com/free-icon/flash_657908
+- Enable icon: https://www.flaticon.com/free-icon/power-switch_4139573
+- Vibrate icon: https://www.flaticon.com/free-icon/ring_14533511
+- Dynamic icon: https://www.flaticon.com/free-icon/line-graph_920199
+- Intensity icon: https://www.flaticon.com/free-icon/thermostat_4117629
+- Duration icon: https://www.flaticon.com/free-icon/hourglass_786017
+- Cooldown icon: https://www.flaticon.com/free-icon/yield_678594
 
+## AI Disclaimer
+
+AI was used to create some parts of this project however I have personally tested everything and addressed edge cases where required.
+
+If you have an issue with this please do no not contact me.
 
 ## Contact Me
 
