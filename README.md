@@ -84,6 +84,13 @@ Options:
 ## Third Party Resources
 
 Program icon: https://www.flaticon.com/free-icon/flash_657908
+Enable icon: https://www.flaticon.com/free-icon/power-switch_4139573
+Vibrate icon: https://www.flaticon.com/free-icon/ring_14533511
+Dynamic icon: https://www.flaticon.com/free-icon/line-graph_920199
+Intensity icon: https://www.flaticon.com/free-icon/thermostat_4117629
+Duration icon: https://www.flaticon.com/free-icon/hourglass_786017
+Cooldown icon: https://www.flaticon.com/free-icon/yield_678594
+
 
 ## Contact Me
 
