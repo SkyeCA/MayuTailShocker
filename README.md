@@ -31,7 +31,9 @@ You can find the latest pre-built versions of this program and a Unity prefab fo
 *   OSC enabled in the VRChat radial menu (Options -> OSC -> Enabled).
 *   An avatar configured with a PhysBone on the tail, set up with `_IsGrabbed` and `_Stretch` parameters and the ability to be grabbed and stretched.
 
-## How to Run 
+## Desktop App
+
+### How to Run 
 
 To run the program from source:
 1. Open your terminal or command prompt.
@@ -44,24 +46,40 @@ To run the program from source:
    python tail_shocker.py
    ```
 
-## How to Build
+### How to Build
 
 To compile a standalone executable from source:
 
 1. Install PyInstaller (pip install pyinstaller).
 2. Run the provided build.bat file in the project directory to automatically compile the application.
 
-## Avatar Setup
+## Screenshots
 
+![A screenshot of the program running](/resources/sreenshot.jpg)
+
+## Avatar Control Prefab
+
+### Avatar Setup
 
 1. Download the newest Mayu Tail Shocker prefab from the releases page.
 2. Ensure your project has VRCFury installed.
 3. Import the Mayu Tail Shocker Unity package into your project.
 4. Drag the prefab directly onto your avatar's root in the project hierarchy.
 
-## Screenshots
+## How to Use
 
-![A screenshot of the program running](/resources/sreenshot.jpg)
+![A screenshot of the in game control](/resources/menu.jpg)
+
+The prefab for this project adds a set of options to the VRC radial menu for controlling application settings. These options are placed in a submenu called "Mayu Tail Shocker" by default.
+
+Options:
+
+- __Enable:__ Enables or disables the application. When disabled no shocks will occur.
+- __Vibrate Only:__ Enables or disables vibration only mode. When enabled the shocker will vibrate, but not shock the user.
+- __Dynamic Mode:__ Enables or disables the shock intensity and duration based on the stretch amount of the tail/physbone.
+- __Max Intensity:__ The maximum intensity the user can be shocked from 0% to 100%.
+- __Max Duration:__ The maximum length of time a single shock can shock the user. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
+- __Cooldown:__ The time after a shock before another shock can occur. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
 
 ## Third Party Resources
 
