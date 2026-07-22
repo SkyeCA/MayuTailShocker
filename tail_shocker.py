@@ -306,6 +306,15 @@ class TailShockerApp:
         self._send_osc_if_user(MTS_DURATION, self.max_duration_var.get() / 10.0)
         self._send_osc_if_user(MTS_COOLDOWN, self.cooldown_var.get() / 10.0)
 
+    def on_avatar_change(self, address, *args):
+        self.log_message("Avatar load detected. Resyncing menu...")
+        
+        def delayed_sync():
+            time.sleep(1.5)
+            self._sync_all_osc()
+            
+        threading.Thread(target=delayed_sync, daemon=True).start()
+
     def _set_var_from_osc(self, var, value):
         self._updating_from_osc = True
         var.set(value)
@@ -650,6 +659,7 @@ class TailShockerApp:
         dispatcher = Dispatcher()
         dispatcher.map(self.param_grabbed, self.on_grabbed_update)
         dispatcher.map(self.param_stretch, self.on_stretch_update)
+        dispatcher.map("/avatar/change", self.on_avatar_change)
         dispatcher.map(MTS_ENABLE, self.on_mts_enable)
         dispatcher.map(MTS_VIBRATE, self.on_mts_vibrate)
         dispatcher.map(MTS_DYNAMIC, self.on_mts_dynamic)
