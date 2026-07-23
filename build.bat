@@ -20,7 +20,10 @@ IF NOT EXIST "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
-echo [*] Building EXE with PyInstaller...
+echo [*] Bumping version...
+
+for /f %%v in ('python bump_version.py') do set NEW_VERSION=%%v
+echo [*] Building version %NEW_VERSION%...
 
 pyinstaller -n "MayuTailShocker" --noconsole --onefile --icon=resources/icon.png --add-data "resources/icon.png;resources" --version-file=version_info.txt tail_shocker.py
 
@@ -49,7 +52,7 @@ powershell -NoProfile -Command ^
     "else { Write-Host ('Signature failed: ' + $sig.StatusMessage) -ForegroundColor Red }"
 
 echo ========================================
-echo  Build Complete! 
+echo  Build Complete! (v%NEW_VERSION%)
 echo  The new EXE is located in the ./dist folder.
 echo ========================================
 pause

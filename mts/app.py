@@ -29,6 +29,7 @@ from .constants import (
 from .modals import APIConfigModal, OSCConfigModal, ShockerConfigModal
 from .openshock_api import OpenShockClient
 from .osc_bridge import OSCBridge
+from .version import __version__
 
 
 class TailShockerApp:
@@ -457,6 +458,7 @@ class TailShockerApp:
             icon_label.image = icon_image  # keep a reference alive
             icon_label.pack(pady=(15, 5))
         tk.Label(about_window, text="Mayu Tail Shocker", font=("Helvetica", 12, "bold")).pack()
+        tk.Label(about_window, text=f"Version {__version__}", font=("Helvetica", 9)).pack()
         tk.Label(about_window, text="Created by SkyeCA", font=("Helvetica", 10)).pack(pady=(0, 10))
         link_lbl = tk.Label(about_window, text=ABOUT_URL, font=("Helvetica", 10, "underline"), fg="blue", cursor="hand2")
         link_lbl.pack()
