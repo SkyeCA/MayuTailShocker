@@ -251,13 +251,15 @@ class TailShockerApp:
         self.max_duration_slider = tk.Scale(
             slider_frame, from_=0.3, to=10.0, resolution=0.1, orient=tk.HORIZONTAL, 
             label="Maximum Allowed Duration (Seconds)", variable=self.max_duration_var
-        ).pack(fill=tk.X)
+        )
+        self.max_duration_slider.pack(fill=tk.X)
 
         self.cooldown_var = tk.DoubleVar(value=5.0)
         self.cooldown_slider = tk.Scale(
             slider_frame, from_=1.0, to=10.0, resolution=0.5, orient=tk.HORIZONTAL, 
             label="Cooldown Between Shocks (Seconds)", variable=self.cooldown_var
-        ).pack(fill=tk.X)
+        )
+        self.cooldown_slider.pack(fill=tk.X)
 
         self.test_mode_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
@@ -355,6 +357,8 @@ class TailShockerApp:
             val = float(args[0])
             if val < 0.03: 
                 val = 0.03
+            elif val > 1.0:
+                val = 1.0
             seconds = val * 10.0
             self.root.after(0, self._set_var_from_osc, self.max_duration_var, round(seconds, 1))
 
@@ -364,6 +368,8 @@ class TailShockerApp:
             seconds = val * 10.0
             if seconds < 1.0: 
                 seconds = 1.0 
+            elif seconds > 10.0:
+                seconds = 10.0
             self.root.after(0, self._set_var_from_osc, self.cooldown_var, round(seconds, 1))
 
     def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
@@ -554,7 +560,8 @@ class TailShockerApp:
         intensity = random.randint(1, max_i) if max_i > 1 else 1
 
         if action_type == "Shock":
-            self.session_shock_count += 1
+            with self.lock:
+                self.session_shock_count += 1
             self.root.after(0, self._update_shock_count_ui)
 
         self.log_message(f"Triggering Burst: {intensity}% intensity for {duration_s}s ({action_type})")
@@ -570,7 +577,8 @@ class TailShockerApp:
 
         is_real_shock = not self.test_mode_var.get()
         if is_real_shock:
-            self.session_shock_count += 1
+            with self.lock:
+                self.session_shock_count += 1
             self.root.after(0, self._update_shock_count_ui)
             
         accumulated_time = 0.0
@@ -593,7 +601,8 @@ class TailShockerApp:
             if is_real_shock:
                 accumulated_time += 0.2
                 if accumulated_time >= 1.0:
-                    self.session_shock_count += 1
+                    with self.lock:
+                        self.session_shock_count += 1
                     self.root.after(0, self._update_shock_count_ui)
                     accumulated_time -= 1.0
             
