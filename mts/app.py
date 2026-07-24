@@ -1,4 +1,6 @@
+import atexit
 import random
+import signal
 import threading
 import time
 import webbrowser
@@ -23,12 +25,12 @@ from .constants import (
     OSC_IP,
     OSC_PORT,
     OSC_SEND_PORT,
-    SHOCK_LOG_FILE,
     resource_path,
 )
 from .modals import APIConfigModal, OSCConfigModal, ShockerConfigModal
 from .openshock_api import OpenShockClient
 from .osc_bridge import OSCBridge
+from .session_log import finalize_session, recover_previous_session, update_session_state
 from .version import __version__
 
 
@@ -50,6 +52,7 @@ class TailShockerApp:
         self.current_stretch = 0.0
         self.session_shock_count = 0
         self.is_dynamic_loop_running = False
+        self._session_finalized = False
         self.lock = threading.Lock()
 
         self.osc = OSCBridge(OSC_IP, OSC_PORT, OSC_SEND_PORT)
@@ -58,6 +61,7 @@ class TailShockerApp:
         self._build_menu()
         self._build_gui()
         self._log_config_status(config_error)
+        self._recover_previous_session()
         self.osc.start(self._osc_handlers())
 
         self._sync_all_osc()
@@ -80,6 +84,11 @@ class TailShockerApp:
             self.log_message("Configuration loaded successfully.")
         else:
             self.log_message("SETUP REQUIRED: Go to File > API Config to add your API Key, then File > Shocker Config to add Shockers.")
+
+    def _recover_previous_session(self):
+        recovered = recover_previous_session()
+        if recovered:
+            self.log_message(f"Previous session didn't exit cleanly - recovered {recovered} shock(s) into shock_log.txt.")
 
     def _build_menu(self):
         menubar = tk.Menu(self.root)
@@ -342,6 +351,10 @@ class TailShockerApp:
     def _increment_shock_count(self):
         with self.lock:
             self.session_shock_count += 1
+            # Persisted immediately (not just at exit) so the count survives a hard
+            # kill - SteamVR force-closing us or an OS shutdown never runs our
+            # shutdown code at all, so exit-time logging alone can't be relied on.
+            update_session_state(self.session_shock_count)
         self.root.after(0, self._update_shock_count_ui)
 
     # ------------------------------------------------------------------
@@ -473,13 +486,11 @@ class TailShockerApp:
         self.log_message("OSC listener restarted and mapped to new parameters.")
 
     def save_shock_stats(self):
-        if self.session_shock_count > 0:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            try:
-                with open(SHOCK_LOG_FILE, "a") as f:
-                    f.write(f"[{timestamp}] Session ended. Total shocks sent/scaled: {self.session_shock_count}\n")
-            except Exception:
-                pass
+        # Idempotent: may be invoked twice (e.g. quit_app then atexit on top of it).
+        if self._session_finalized:
+            return
+        self._session_finalized = True
+        finalize_session(self.session_shock_count)
 
     def quit_app(self):
         self.save_shock_stats()
@@ -492,4 +503,22 @@ def main():
     root = tk.Tk()
     app = TailShockerApp(root)
     root.protocol("WM_DELETE_WINDOW", app.quit_app)
+    # Best-effort: Tk maps Windows logoff/shutdown (WM_QUERYENDSESSION) to this protocol.
+    root.protocol("WM_SAVE_YOURSELF", app.quit_app)
+
+    # Belt-and-suspenders for exit paths that do run Python code (Ctrl+C, a polite
+    # SIGTERM, an uncaught exception, sys.exit). Doesn't help against a hard kill
+    # (TerminateProcess) - that's what the incremental session-state persistence
+    # in mts/session_log.py is actually for.
+    atexit.register(app.save_shock_stats)
+
+    def _on_termination_signal(signum, frame):
+        app.quit_app()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _on_termination_signal)
+        except (ValueError, OSError):
+            pass
+
     root.mainloop()

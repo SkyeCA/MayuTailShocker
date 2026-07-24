@@ -19,6 +19,7 @@ MTS_COOLDOWN = "/avatar/parameters/MTS_Cooldown"
 
 CONFIG_FILE = os.path.join(os.path.dirname(sys.argv[0]), "config.json")
 SHOCK_LOG_FILE = os.path.join(os.path.dirname(sys.argv[0]), "shock_log.txt")
+SESSION_STATE_FILE = os.path.join(os.path.dirname(sys.argv[0]), "session_state.json")
 USER_AGENT = "MayuTailShocker/1.0 (skye@vore.my)"
 
 GITHUB_URL = "https://github.com/SkyeCA/MayuTailShocker"

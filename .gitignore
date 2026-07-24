@@ -18,5 +18,11 @@ Thumbs.db
 .idea/
 *.swp
 
+# Config
 config.json
 secrets.py
+
+# Builds
+build/
+dist/
+MayuTailShocker.dist
