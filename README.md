@@ -1,33 +1,38 @@
 # Mayu Tail Shocker
 
-## Overview
-This is a Python based application created to send random shock commands to OpenShock shockers when the tail
-of a Mayu* is pulled.
+A Python desktop app that sends random shock commands to your OpenShock shockers when your Mayu's* tail is grabbed and pulled.
 
-__This project is not currently PiShock compatible!__
+> [!WARNING]
+> This project is **not** currently PiShock compatible.
 
-\* This will work on any avatar with a PhysBone that can be grabbed and pulled, but additional setup might be
-required for your avatar and to this program's configuration.
+\* Works with any avatar that has a PhysBone which can be grabbed and stretched — some extra setup on your avatar and in this program's config may be required.
+
+## Contents
+
+- [Releases](#releases)
+- [Requirements](#requirements)
+- [Desktop App](#desktop-app)
+- [Avatar Control Prefab](#avatar-control-prefab)
+- [Third Party Resources](#third-party-resources)
+- [Screenshots](#screenshots)
 
 ## Releases
 
-You can find the latest pre-built versions of this program and a Unity prefab for in game control on the [releases page](https://github.com/SkyeCA/MayuTailShocker/releases).
+Pre-built versions of the desktop app and the Unity prefab for in-game control are on the [releases page](https://github.com/SkyeCA/MayuTailShocker/releases).
 
 ## Requirements
 
-### 1. Software Dependencies
-*   **Python 3.x** installed on your system.
-*   The following Python packages:
-    *   `python-osc`
-    *   `requests`
+### Software Dependencies
+- **Python 3.x**
+- Python packages: `python-osc`, `requests`
 
-### 2. OpenShock Requirements
-*   An **OpenShock API Token**.
-*   The **Shocker IDs** for the shockers you intend to control.
+### OpenShock
+- An **OpenShock API Token**
+- The **Shocker IDs** for the shockers you want to control
 
-### 3. VRChat Requirements
-*   OSC enabled in the VRChat radial menu (Options -> OSC -> Enabled).
-*   An avatar configured with a PhysBone on the tail, set up with `_IsGrabbed` and `_Stretch` parameters and the ability to be grabbed and stretched.
+### VRChat
+- OSC enabled (Options → OSC → Enabled)
+- An avatar with a tail PhysBone that can be grabbed and stretched, exposing `_IsGrabbed` and `_Stretch` parameters
 
 ### Physbone Parameter Setup
 
@@ -35,30 +40,27 @@ You can find the latest pre-built versions of this program and a Unity prefab fo
 
 ## Desktop App
 
-### How to Run 
+### Running from Source
 
-To run the program from source:
-1. Open your terminal or command prompt.
-2. Install the required dependencies:
+1. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-3. Run the script:
+2. Run the app:
    ```bash
    python tail_shocker.py
    ```
 
-Note: I highly recommend using venv when running this from source.
+> [!TIP]
+> Using a virtual environment (`venv`) is recommended when running from source.
 
-### How to Build
+### Building
 
-To compile a standalone executable from source:
-
-1. Run the provided build.bat file in the project directory to automatically compile the application.
+Run `build.bat` in the project directory to compile a standalone executable.
 
 ### Running Tests
 
-The `tests/` folder has a unit test suite covering config loading/saving, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It uses only the standard library, so no extra install is needed:
+The `tests/` folder contains a unit test suite covering config loading/saving, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It only uses the standard library, so no extra install is needed:
 
 ```bash
 python -m unittest discover -v
@@ -66,38 +68,37 @@ python -m unittest discover -v
 
 ## Avatar Control Prefab
 
-### Avatar Setup
+### Setup
 
-1. Download the newest Mayu Tail Shocker prefab from the releases page.
-2. Ensure your project has VRCFury installed.
-3. Import the Mayu Tail Shocker Unity package into your project.
-4. Drag the prefab directly onto your avatar's root in the project hierarchy.
+1. Download the latest Mayu Tail Shocker prefab from the [releases page](https://github.com/SkyeCA/MayuTailShocker/releases).
+2. Make sure your project has VRCFury installed.
+3. Import the Mayu Tail Shocker Unity package.
+4. Drag the prefab onto your avatar's root in the hierarchy.
 
-### How to Use
+### Usage
 
 ![A screenshot of the in game control](/resources/menu.jpg)
 
-The prefab for this project adds a set of options to the VRC radial menu for controlling application settings. These options are placed in a submenu called "Mayu Tail Shocker" by default.
+The prefab adds a submenu to the VRC radial menu (named "Mayu Tail Shocker" by default) with these options:
 
-#### Options:
-
-- __Enable:__ Enables or disables the application. When disabled no shocks will occur.
-- __Vibrate Only:__ Enables or disables vibration only mode. When enabled the shocker will vibrate, but not shock the user.
-- __Dynamic Mode:__ Enables a mode which uses the grab state and stretch amount of the tail/physbone to determine the intensity and duration of the shock.
-- __Max Intensity:__ The maximum intensity the user can be shocked from 0% to 100%.
-- __Max Duration:__ The maximum length of time a single shock can shock the user. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
-  - Note: For OpenShock the minimum shock duration is 300ms, so 1%, 2% and 3% all trigger a 300ms shock.
-- __Cooldown:__ The time after a shock before another shock can occur. Does not apply in dynamic mode. Range is 0 to 10 seconds, with each 1% being 100ms (10% is 1 second).
+| Option | Description |
+|---|---|
+| **Enable** | Turns the application on or off. No shocks occur while disabled. |
+| **Vibrate Only** | When enabled, the shocker vibrates instead of shocking. |
+| **Dynamic Mode** | Sets shock intensity and duration automatically from the tail's grab state and stretch amount. |
+| **Max Intensity** | Maximum shock intensity, 0–100%. |
+| **Max Duration** | Maximum length of a single shock. Not used in Dynamic Mode. Range is 0–10s, where each 1% = 100ms (10% = 1s). OpenShock's minimum shock duration is 300ms, so 1–3% all trigger a 300ms shock. |
+| **Cooldown** | Time after a shock before another can occur. Not used in Dynamic Mode. Same 1% = 100ms scale as Max Duration. |
 
 ## Third Party Resources
 
-- Program icon: https://www.flaticon.com/free-icon/flash_657908
-- Enable icon: https://www.flaticon.com/free-icon/power-switch_4139573
-- Vibrate icon: https://www.flaticon.com/free-icon/ring_14533511
-- Dynamic icon: https://www.flaticon.com/free-icon/line-graph_920199
-- Intensity icon: https://www.flaticon.com/free-icon/thermostat_4117629
-- Duration icon: https://www.flaticon.com/free-icon/hourglass_786017
-- Cooldown icon: https://www.flaticon.com/free-icon/yield_678594
+- [Program icon](https://www.flaticon.com/free-icon/flash_657908)
+- [Enable icon](https://www.flaticon.com/free-icon/power-switch_4139573)
+- [Vibrate icon](https://www.flaticon.com/free-icon/ring_14533511)
+- [Dynamic icon](https://www.flaticon.com/free-icon/line-graph_920199)
+- [Intensity icon](https://www.flaticon.com/free-icon/thermostat_4117629)
+- [Duration icon](https://www.flaticon.com/free-icon/hourglass_786017)
+- [Cooldown icon](https://www.flaticon.com/free-icon/yield_678594)
 
 ## Screenshots
 
@@ -105,10 +106,8 @@ The prefab for this project adds a set of options to the VRC radial menu for con
 
 ## AI Disclaimer
 
-AI was used to create _some_ parts of this project however I have personally tested everything and addressed edge cases where required.
-
-If you have an issue with this please do no not contact me.
+AI was used to create *some* parts of this project; everything has been personally tested and edge cases have been addressed. Please don't contact me about this.
 
 ## Contact Me
 
-You can find my contact information here: http://vore.my
+[vore.my](http://vore.my)
