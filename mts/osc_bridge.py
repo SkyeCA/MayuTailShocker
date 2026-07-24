@@ -32,6 +32,7 @@ class OSCBridge:
         if self.server:
             try:
                 self.server.shutdown()
+                self.server.server_close()
             except Exception:
                 pass
 

@@ -56,6 +56,14 @@ To compile a standalone executable from source:
 
 1. Run the provided build.bat file in the project directory to automatically compile the application.
 
+### Running Tests
+
+The `tests/` folder has a unit test suite covering config loading/saving, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It uses only the standard library, so no extra install is needed:
+
+```bash
+python -m unittest discover -v
+```
+
 ## Avatar Control Prefab
 
 ### Avatar Setup
