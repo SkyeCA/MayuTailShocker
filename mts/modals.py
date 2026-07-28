@@ -1,8 +1,26 @@
 import tkinter as tk
-from tkinter import simpledialog
+from tkinter import simpledialog, ttk
 
 
-class APIConfigModal(simpledialog.Dialog):
+class TtkDialog(simpledialog.Dialog):
+    """simpledialog.Dialog with a ttk-styled OK/Cancel button box, so the built-in
+    buttons match the rest of the ttk-themed app instead of falling back to classic tk."""
+
+    def buttonbox(self):
+        box = ttk.Frame(self)
+
+        w = ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
+        w.pack(side=tk.LEFT, padx=5, pady=5)
+        w = ttk.Button(box, text="Cancel", width=10, command=self.cancel)
+        w.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.bind("<Return>", self.ok)
+        self.bind("<Escape>", self.cancel)
+
+        box.pack()
+
+
+class APIConfigModal(TtkDialog):
     def __init__(self, parent, title, provider, openshock_api_key, pishock_username, pishock_api_key):
         self.current_provider = provider
         self.current_openshock_api_key = openshock_api_key
@@ -12,36 +30,36 @@ class APIConfigModal(simpledialog.Dialog):
         super().__init__(parent, title)
 
     def body(self, master):
-        tk.Label(master, text="Provider:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        ttk.Label(master, text="Provider:", anchor="w").pack(fill=tk.X, pady=(5, 2))
 
         self.provider_var = tk.StringVar(value=self.current_provider)
-        provider_frame = tk.Frame(master)
+        provider_frame = ttk.Frame(master)
         provider_frame.pack(fill=tk.X, pady=(0, 10))
-        tk.Radiobutton(
+        ttk.Radiobutton(
             provider_frame, text="OpenShock", variable=self.provider_var, value="openshock",
             command=self._update_visible_fields
         ).pack(side=tk.LEFT)
-        tk.Radiobutton(
+        ttk.Radiobutton(
             provider_frame, text="PiShock", variable=self.provider_var, value="pishock",
             command=self._update_visible_fields
         ).pack(side=tk.LEFT, padx=(10, 0))
 
-        tk.Frame(master, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=(0, 10))
+        ttk.Separator(master, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(0, 10))
 
-        self.openshock_frame = tk.Frame(master)
-        tk.Label(self.openshock_frame, text="OpenShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
-        self.openshock_key_entry = tk.Entry(self.openshock_frame, width=55)
+        self.openshock_frame = ttk.Frame(master)
+        ttk.Label(self.openshock_frame, text="OpenShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.openshock_key_entry = ttk.Entry(self.openshock_frame, width=55)
         self.openshock_key_entry.insert(0, self.current_openshock_api_key)
         self.openshock_key_entry.pack(fill=tk.X)
 
-        self.pishock_frame = tk.Frame(master)
-        tk.Label(self.pishock_frame, text="PiShock Username:", anchor="w").pack(fill=tk.X, pady=(0, 2))
-        self.pishock_username_entry = tk.Entry(self.pishock_frame, width=55)
+        self.pishock_frame = ttk.Frame(master)
+        ttk.Label(self.pishock_frame, text="PiShock Username:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.pishock_username_entry = ttk.Entry(self.pishock_frame, width=55)
         self.pishock_username_entry.insert(0, self.current_pishock_username)
         self.pishock_username_entry.pack(fill=tk.X, pady=(0, 8))
 
-        tk.Label(self.pishock_frame, text="PiShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
-        self.pishock_key_entry = tk.Entry(self.pishock_frame, width=55)
+        ttk.Label(self.pishock_frame, text="PiShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.pishock_key_entry = ttk.Entry(self.pishock_frame, width=55)
         self.pishock_key_entry.insert(0, self.current_pishock_api_key)
         self.pishock_key_entry.pack(fill=tk.X)
 
@@ -66,7 +84,7 @@ class APIConfigModal(simpledialog.Dialog):
         }
 
 
-class OSCConfigModal(simpledialog.Dialog):
+class OSCConfigModal(TtkDialog):
     def __init__(self, parent, title, param_grabbed, param_stretch):
         self.param_grabbed = param_grabbed
         self.param_stretch = param_stretch
@@ -74,13 +92,13 @@ class OSCConfigModal(simpledialog.Dialog):
         super().__init__(parent, title)
 
     def body(self, master):
-        tk.Label(master, text="VRChat Grab Parameter (Boolean):", anchor="w").pack(fill=tk.X, pady=(5, 2))
-        self.grab_entry = tk.Entry(master, width=55)
+        ttk.Label(master, text="VRChat Grab Parameter (Boolean):", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.grab_entry = ttk.Entry(master, width=55)
         self.grab_entry.insert(0, self.param_grabbed)
         self.grab_entry.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(master, text="VRChat Stretch Parameter (Float):", anchor="w").pack(fill=tk.X, pady=(5, 2))
-        self.stretch_entry = tk.Entry(master, width=55)
+        ttk.Label(master, text="VRChat Stretch Parameter (Float):", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        self.stretch_entry = ttk.Entry(master, width=55)
         self.stretch_entry.insert(0, self.param_stretch)
         self.stretch_entry.pack(fill=tk.X, pady=(0, 5))
 
@@ -93,7 +111,7 @@ class OSCConfigModal(simpledialog.Dialog):
         }
 
 
-class ShockerConfigModal(simpledialog.Dialog):
+class ShockerConfigModal(TtkDialog):
     def __init__(self, parent, title, current_ids, current_mode, id_label="Shocker ID"):
         self.current_ids = list(current_ids)
         self.current_mode = current_mode
@@ -102,20 +120,20 @@ class ShockerConfigModal(simpledialog.Dialog):
         super().__init__(parent, title)
 
     def body(self, master):
-        tk.Label(master, text="Shocker Mode:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        ttk.Label(master, text="Shocker Mode:", anchor="w").pack(fill=tk.X, pady=(5, 2))
 
         self.mode_var = tk.StringVar(value=self.current_mode)
-        self.radio_all = tk.Radiobutton(master, text="Trigger All Shockers", variable=self.mode_var, value="All")
+        self.radio_all = ttk.Radiobutton(master, text="Trigger All Shockers", variable=self.mode_var, value="All")
         self.radio_all.pack(anchor="w")
 
-        self.radio_random = tk.Radiobutton(master, text="Trigger Random Shocker", variable=self.mode_var, value="Random")
+        self.radio_random = ttk.Radiobutton(master, text="Trigger Random Shocker", variable=self.mode_var, value="Random")
         self.radio_random.pack(anchor="w")
 
-        tk.Frame(master, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=10)
+        ttk.Separator(master, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
-        tk.Label(master, text=f"{self.id_label}s:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        ttk.Label(master, text=f"{self.id_label}s:", anchor="w").pack(fill=tk.X, pady=(5, 2))
 
-        list_frame = tk.Frame(master)
+        list_frame = ttk.Frame(master)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
         self.listbox = tk.Listbox(list_frame, height=6)
@@ -123,19 +141,19 @@ class ShockerConfigModal(simpledialog.Dialog):
         for sid in self.current_ids:
             self.listbox.insert(tk.END, sid)
 
-        scrollbar = tk.Scrollbar(list_frame, orient="vertical")
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
         scrollbar.config(command=self.listbox.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.listbox.config(yscrollcommand=scrollbar.set)
 
-        ctrl_frame = tk.Frame(master)
+        ctrl_frame = ttk.Frame(master)
         ctrl_frame.pack(fill=tk.X, pady=(5, 10))
 
-        self.new_id_entry = tk.Entry(ctrl_frame)
+        self.new_id_entry = ttk.Entry(ctrl_frame)
         self.new_id_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
-        tk.Button(ctrl_frame, text="Add", command=self.add_id).pack(side=tk.LEFT, padx=(0, 5))
-        tk.Button(ctrl_frame, text="Remove Selected", command=self.remove_id).pack(side=tk.LEFT)
+        ttk.Button(ctrl_frame, text="Add", command=self.add_id).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(ctrl_frame, text="Remove Selected", command=self.remove_id).pack(side=tk.LEFT)
 
         self._update_radio_states()
 

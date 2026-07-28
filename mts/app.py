@@ -8,7 +8,7 @@ from datetime import datetime
 
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, ttk
 
 from .config import load_config
 from .constants import (
@@ -58,6 +58,7 @@ class TailShockerApp:
         self.osc = OSCBridge(OSC_IP, OSC_PORT, OSC_SEND_PORT)
         self._updating_from_osc = False
 
+        self._setup_style()
         self._build_menu()
         self._build_gui()
         self._log_config_status(config_error)
@@ -75,6 +76,48 @@ class TailShockerApp:
             return tk.PhotoImage(file=resource_path("resources/icon.png"))
         except Exception:
             return None
+
+    def _setup_style(self):
+        style = ttk.Style(self.root)
+        # Prefer each platform's native ttk theme; "clam" is the fallback for
+        # platforms (mainly Linux) where the default theme still looks like Tk 8.5.
+        for theme in ("vista", "aqua", "clam"):
+            if theme in style.theme_names():
+                style.theme_use(theme)
+                break
+
+        bold = ("Helvetica", 10, "bold")
+        style.configure("Vibrate.TCheckbutton", foreground="blue", font=bold)
+        style.configure("Dynamic.TCheckbutton", foreground="purple", font=bold)
+        style.configure("Status.TLabel", font=("Helvetica", 12, "bold"))
+        self.style = style
+
+    def _make_scale(self, parent, label_fmt, variable, frm, to, resolution):
+        """A ttk.Scale wrapper that snaps to `resolution` and shows the current
+        value in a label above it - ttk.Scale (unlike tk.Scale) has no built-in
+        resolution or label option, so both are reimplemented here.
+
+        The resolution is kept in a one-item list (rather than a plain closure
+        variable) so it can still be changed later via scale.set_resolution(),
+        which _apply_duration_bounds() needs when the provider switches.
+        """
+        is_int = isinstance(variable, tk.IntVar)
+        resolution_holder = [resolution]
+        label = ttk.Label(parent, text=label_fmt.format(variable.get()))
+        label.pack(fill=tk.X, pady=(8, 0))
+
+        def on_move(value):
+            step = resolution_holder[0]
+            snapped = round(float(value) / step) * step
+            snapped = int(round(snapped)) if is_int else round(snapped, 2)
+            if snapped != variable.get():
+                variable.set(snapped)
+            label.config(text=label_fmt.format(snapped))
+
+        scale = ttk.Scale(parent, from_=frm, to=to, orient=tk.HORIZONTAL, variable=variable, command=on_move)
+        scale.pack(fill=tk.X, pady=(0, 4))
+        scale.set_resolution = lambda r: resolution_holder.__setitem__(0, r)
+        return label, scale
 
     def _log_config_status(self, config_error):
         if config_error == "parse_error":
@@ -109,6 +152,9 @@ class TailShockerApp:
         self.root.config(menu=menubar)
 
     def _build_gui(self):
+        # Left as a plain tk.Label rather than ttk.Button: this widget's whole job is
+        # flipping between a solid red/green fill, and ttk widgets (especially under
+        # macOS's native "aqua" theme) largely ignore background color overrides.
         button_font = tkfont.Font(size=20, weight="bold")
         self.stop_btn = tk.Label(
             self.root, text="Disable", bg="red", fg="white", font=button_font,
@@ -117,51 +163,42 @@ class TailShockerApp:
         self.stop_btn.pack(fill=tk.X, padx=10, pady=10, ipady=20)
         self.stop_btn.bind("<Button-1>", lambda event: self.toggle_active())
 
-        slider_frame = tk.LabelFrame(self.root, text="Shocker Settings", padx=10, pady=10)
+        slider_frame = ttk.LabelFrame(self.root, text="Shocker Settings", padding=10)
         slider_frame.pack(fill=tk.X, padx=10, pady=5)
 
         self.max_intensity_var = tk.IntVar(value=30)
-        tk.Scale(
-            slider_frame, from_=1, to=100, orient=tk.HORIZONTAL,
-            label="Maximum Allowed Intensity (%)", variable=self.max_intensity_var
-        ).pack(fill=tk.X)
+        self._make_scale(slider_frame, "Maximum Allowed Intensity: {}%", self.max_intensity_var, 1, 100, 1)
 
         self.max_duration_var = tk.DoubleVar(value=1.0)
-        self.max_duration_slider = tk.Scale(
-            slider_frame, from_=self.client.MIN_DURATION_MS / 1000, to=10.0,
-            resolution=self.client.DURATION_RESOLUTION_S, orient=tk.HORIZONTAL,
-            label="Maximum Allowed Duration (Seconds)", variable=self.max_duration_var
+        self.max_duration_label, self.max_duration_slider = self._make_scale(
+            slider_frame, "Maximum Allowed Duration: {}s", self.max_duration_var,
+            self.client.MIN_DURATION_MS / 1000, 10.0, self.client.DURATION_RESOLUTION_S
         )
-        self.max_duration_slider.pack(fill=tk.X)
 
         self.cooldown_var = tk.DoubleVar(value=5.0)
-        self.cooldown_slider = tk.Scale(
-            slider_frame, from_=1.0, to=10.0, resolution=0.5, orient=tk.HORIZONTAL,
-            label="Cooldown Between Shocks (Seconds)", variable=self.cooldown_var
+        self.cooldown_label, self.cooldown_slider = self._make_scale(
+            slider_frame, "Cooldown Between Shocks: {}s", self.cooldown_var, 1.0, 10.0, 0.5
         )
-        self.cooldown_slider.pack(fill=tk.X)
 
         self.test_mode_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(
-            slider_frame, text="Vibrate Mode",
-            variable=self.test_mode_var, font=("Helvetica", 10, "bold"), fg="blue"
+        ttk.Checkbutton(
+            slider_frame, text="Vibrate Mode", variable=self.test_mode_var, style="Vibrate.TCheckbutton"
         ).pack(anchor="w", pady=(10, 0))
 
-        tk.Frame(slider_frame, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=10)
+        ttk.Separator(slider_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
         self.dynamic_mode_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
-            slider_frame, text="Physbone Stretch Mode",
-            variable=self.dynamic_mode_var, font=("Helvetica", 10, "bold"), fg="purple"
+        ttk.Checkbutton(
+            slider_frame, text="Physbone Stretch Mode", variable=self.dynamic_mode_var, style="Dynamic.TCheckbutton"
         ).pack(anchor="w", pady=(0, 5))
 
-        status_frame = tk.Frame(self.root)
+        status_frame = ttk.Frame(self.root)
         status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(status_frame, text="System Status:", font=("Helvetica", 12)).pack(side=tk.LEFT)
-        self.status_label = tk.Label(status_frame, text="READY", fg="green", font=("Helvetica", 12, "bold"))
+        ttk.Label(status_frame, text="System Status:", font=("Helvetica", 12)).pack(side=tk.LEFT)
+        self.status_label = ttk.Label(status_frame, text="READY", foreground="green", style="Status.TLabel")
         self.status_label.pack(side=tk.LEFT, padx=10)
 
-        self.shock_count_label = tk.Label(status_frame, text="Shocks This Session: 0", font=("Helvetica", 10))
+        self.shock_count_label = ttk.Label(status_frame, text="Shocks This Session: 0")
         self.shock_count_label.pack(side=tk.RIGHT)
 
         self.log_area = scrolledtext.ScrolledText(self.root, height=10, state='disabled')
@@ -375,11 +412,11 @@ class TailShockerApp:
         self.is_active = not self.is_active
         if self.is_active:
             self.stop_btn.config(text="Disable", bg="red", relief="raised")
-            self.status_label.config(text="READY", fg="green")
+            self.status_label.config(text="READY", foreground="green")
             self.log_message("System Enabled.")
         else:
             self.stop_btn.config(text="Enable", bg="green", relief="sunken")
-            self.status_label.config(text="DISABLED", fg="red")
+            self.status_label.config(text="DISABLED", foreground="red")
             self.log_message("System Disabled.")
             threading.Thread(target=self.send_halt_command, daemon=True).start()
 
@@ -388,28 +425,32 @@ class TailShockerApp:
 
     def _on_dynamic_mode_changed(self, *args):
         if self.dynamic_mode_var.get():
-            self.max_duration_slider.config(state=tk.DISABLED, fg="gray")
-            self.cooldown_slider.config(state=tk.DISABLED, fg="gray")
+            self.max_duration_slider.config(state=tk.DISABLED)
+            self.cooldown_slider.config(state=tk.DISABLED)
+            self.max_duration_label.config(foreground="gray")
+            self.cooldown_label.config(foreground="gray")
             self.log_message("Physbone Stretch Mode enabled.")
         else:
-            self.max_duration_slider.config(state=tk.NORMAL, fg="black")
-            self.cooldown_slider.config(state=tk.NORMAL, fg="black")
+            self.max_duration_slider.config(state=tk.NORMAL)
+            self.cooldown_slider.config(state=tk.NORMAL)
+            self.max_duration_label.config(foreground="black")
+            self.cooldown_label.config(foreground="black")
             self.log_message("Random Mode enabled.")
         self._send_osc_if_user(MTS_DYNAMIC, self.dynamic_mode_var.get())
 
     def _update_cooldown_ui(self):
         if not self.is_active or self.dynamic_mode_var.get():
-            self.status_label.config(text="READY", fg="green")
+            self.status_label.config(text="READY", foreground="green")
             return
 
         time_passed = time.time() - self.last_shock_time
         remaining_cooldown = self.cooldown_var.get() - time_passed
 
         if remaining_cooldown > 0:
-            self.status_label.config(text=f"COOLDOWN ({remaining_cooldown:.1f}s)", fg="orange")
+            self.status_label.config(text=f"COOLDOWN ({remaining_cooldown:.1f}s)", foreground="orange")
             self.root.after(100, self._update_cooldown_ui)
         else:
-            self.status_label.config(text="READY", fg="green")
+            self.status_label.config(text="READY", foreground="green")
 
     def _update_shock_count_ui(self):
         self.shock_count_label.config(text=f"Shocks This Session: {self.session_shock_count}")
@@ -435,9 +476,11 @@ class TailShockerApp:
 
     def _apply_duration_bounds(self):
         min_s = self.client.MIN_DURATION_MS / 1000
-        self.max_duration_slider.config(from_=min_s, resolution=self.client.DURATION_RESOLUTION_S)
+        self.max_duration_slider.config(from_=min_s)
+        self.max_duration_slider.set_resolution(self.client.DURATION_RESOLUTION_S)
         if self.max_duration_var.get() < min_s:
             self.max_duration_var.set(min_s)
+        self.max_duration_label.config(text=f"Maximum Allowed Duration: {self.max_duration_var.get()}s")
 
     def open_api_config(self):
         modal = APIConfigModal(
@@ -506,16 +549,16 @@ class TailShockerApp:
         about_window.resizable(False, False)
         icon_image = self._load_icon_image()
         if icon_image is not None:
-            icon_label = tk.Label(about_window, image=icon_image)
+            icon_label = ttk.Label(about_window, image=icon_image)
             icon_label.image = icon_image  # keep a reference alive
             icon_label.pack(pady=(15, 5))
-        tk.Label(about_window, text="Mayu Tail Shocker", font=("Helvetica", 12, "bold")).pack()
-        tk.Label(about_window, text=f"Version {__version__}", font=("Helvetica", 9)).pack()
-        tk.Label(about_window, text="Created by SkyeCA", font=("Helvetica", 10)).pack(pady=(0, 10))
-        link_lbl = tk.Label(about_window, text=ABOUT_URL, font=("Helvetica", 10, "underline"), fg="blue", cursor="hand2")
+        ttk.Label(about_window, text="Mayu Tail Shocker", font=("Helvetica", 12, "bold")).pack()
+        ttk.Label(about_window, text=f"Version {__version__}", font=("Helvetica", 9)).pack()
+        ttk.Label(about_window, text="Created by SkyeCA", font=("Helvetica", 10)).pack(pady=(0, 10))
+        link_lbl = ttk.Label(about_window, text=ABOUT_URL, font=("Helvetica", 10, "underline"), foreground="blue", cursor="hand2")
         link_lbl.pack()
         link_lbl.bind("<Button-1>", lambda e: webbrowser.open(ABOUT_URL))
-        tk.Button(about_window, text="Close", command=about_window.destroy).pack(pady=15)
+        ttk.Button(about_window, text="Close", command=about_window.destroy).pack(pady=15)
 
     # ------------------------------------------------------------------
     # OSC server lifecycle / app lifecycle
