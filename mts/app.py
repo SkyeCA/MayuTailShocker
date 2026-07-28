@@ -348,8 +348,6 @@ class TailShockerApp:
             self._increment_shock_count()
 
         accumulated_time = 0.0
-        pulse_interval = self.client.DYNAMIC_PULSE_INTERVAL_S
-        pulse_duration_ms = self.client.DYNAMIC_PULSE_DURATION_MS
         last_pulse_time = 0.0
 
         while self.is_active and self.dynamic_mode_var.get() and self.is_grabbed and self.current_stretch > 0.1:
@@ -360,9 +358,11 @@ class TailShockerApp:
 
             action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
 
+            # Re-read from self.client (not captured once above) each iteration, so a
+            # mid-grab provider switch in API Config takes effect on the next pulse.
             now = time.time()
-            if now - last_pulse_time >= pulse_interval:
-                self.send_shocker_command(intensity, pulse_duration_ms, action_type, log_success=False)
+            if now - last_pulse_time >= self.client.DYNAMIC_PULSE_INTERVAL_S:
+                self.send_shocker_command(intensity, self.client.DYNAMIC_PULSE_DURATION_MS, action_type, log_success=False)
                 last_pulse_time = now
             time.sleep(0.2)
 
