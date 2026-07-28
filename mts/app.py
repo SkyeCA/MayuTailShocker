@@ -29,6 +29,7 @@ from .constants import (
 )
 from .modals import APIConfigModal, OSCConfigModal, ShockerConfigModal
 from .osc_bridge import OSCBridge
+from .scale_utils import snap_to_resolution
 from .shocker_client import build_client
 from .session_log import finalize_session, recover_previous_session, update_session_state
 from .version import __version__
@@ -107,9 +108,7 @@ class TailShockerApp:
         label.pack(fill=tk.X, pady=(8, 0))
 
         def on_move(value):
-            step = resolution_holder[0]
-            snapped = round(float(value) / step) * step
-            snapped = int(round(snapped)) if is_int else round(snapped, 2)
+            snapped = snap_to_resolution(value, resolution_holder[0], is_int)
             if snapped != variable.get():
                 variable.set(snapped)
             label.config(text=label_fmt.format(snapped))
