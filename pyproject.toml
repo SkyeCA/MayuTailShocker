@@ -1,0 +1,16 @@
+[project]
+name = "mayu-tail-shocker"
+# This version field is only here because uv/PEP 621 require one - it is not
+# kept in sync with mts/version.py (the app's real version, shown in the About
+# dialog and bumped by bump_version.py). This app isn't published as a wheel,
+# so this number is otherwise unused.
+version = "0.0.0"
+description = "Sends OpenShock commands over VRChat OSC when a Mayu's tail is grabbed and pulled."
+requires-python = ">=3.9"
+dependencies = [
+    "python-osc>=1.8.3",
+    "requests>=2.31.0",
+]
+
+[tool.uv]
+package = false

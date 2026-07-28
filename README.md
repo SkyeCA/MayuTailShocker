@@ -42,6 +42,12 @@ Pre-built versions of the desktop app and the Unity prefab for in-game control a
 
 ### Running from Source
 
+With [uv](https://github.com/astral-sh/uv) (handles the virtual environment for you):
+```bash
+uv run python tail_shocker.py
+```
+
+With pip:
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -52,7 +58,7 @@ Pre-built versions of the desktop app and the Unity prefab for in-game control a
    ```
 
 > [!TIP]
-> Using a virtual environment (`venv`) is recommended when running from source.
+> If using pip, a virtual environment (`venv`) is recommended when running from source.
 
 ### Building
 
@@ -64,6 +70,8 @@ The `tests/` folder contains a unit test suite covering config loading/saving, t
 
 ```bash
 python -m unittest discover -v
+# or, with uv:
+uv run python -m unittest discover -v
 ```
 
 ## Avatar Control Prefab
