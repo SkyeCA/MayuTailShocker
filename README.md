@@ -1,9 +1,9 @@
 # Mayu Tail Shocker
 
-A Python desktop app that sends random shock commands to your OpenShock shockers when your Mayu's* tail is grabbed and pulled.
+A Python desktop app that sends random shock commands to your OpenShock or PiShock shockers when your Mayu's* tail is grabbed and pulled.
 
-> [!WARNING]
-> This project is **not** currently PiShock compatible.
+> [!NOTE]
+> You can configure both OpenShock and PiShock credentials, but only one provider is active at a time - switch between them in File > API Config.
 
 \* Works with any avatar that has a PhysBone which can be grabbed and stretched — some extra setup on your avatar and in this program's config may be required.
 
@@ -26,9 +26,11 @@ Pre-built versions of the desktop app and the Unity prefab for in-game control a
 - **Python 3.x**
 - Python packages: `python-osc`, `requests`
 
-### OpenShock
-- An **OpenShock API Token**
-- The **Shocker IDs** for the shockers you want to control
+### OpenShock *or* PiShock
+Pick one provider in File > API Config - both can be configured at once, but only the active one is used.
+
+- **OpenShock**: an **API Token**, and the **Shocker IDs** for the shockers you want to control.
+- **PiShock**: your account **Username** and **API Key** (from the PiShock.com Account page), and the **Share Codes** for the shockers you want to control.
 
 ### VRChat
 - OSC enabled (Options → OSC → Enabled)
@@ -66,7 +68,7 @@ Run `build.bat` in the project directory to compile a standalone executable.
 
 ### Running Tests
 
-The `tests/` folder contains a unit test suite covering config loading/saving, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It only uses the standard library, so no extra install is needed:
+The `tests/` folder contains a unit test suite covering config loading/saving, the OpenShock and PiShock API clients, session/shock-log persistence, and the OSC bridge. It only uses the standard library, so no extra install is needed:
 
 ```bash
 python -m unittest discover -v
@@ -93,10 +95,13 @@ The prefab adds a submenu to the VRC radial menu (named "Mayu Tail Shocker" by d
 |---|---|
 | **Enable** | Turns the application on or off. No shocks occur while disabled. |
 | **Vibrate Only** | When enabled, the shocker vibrates instead of shocking. |
-| **Dynamic Mode** | Sets shock intensity and duration automatically from the tail's grab state and stretch amount. |
+| **Dynamic Mode** | Sets shock intensity and duration automatically from the tail's grab state and stretch amount. With PiShock active, this re-triggers at most once per second instead of every 200ms, since PiShock can't run shorter pulses (see below). |
 | **Max Intensity** | Maximum shock intensity, 0–100%. |
-| **Max Duration** | Maximum length of a single shock. Not used in Dynamic Mode. Range is 0–10s, where each 1% = 100ms (10% = 1s). OpenShock's minimum shock duration is 300ms, so 1–3% all trigger a 300ms shock. |
+| **Max Duration** | Maximum length of a single shock. Not used in Dynamic Mode. Range is 0–10s, where each 1% = 100ms (10% = 1s). OpenShock's minimum shock duration is 300ms, so 1–3% all trigger a 300ms shock. With PiShock active, the minimum is 1 second (10%) instead, and durations are always rounded to a whole second - PiShock's API has no millisecond precision. |
 | **Cooldown** | Time after a shock before another can occur. Not used in Dynamic Mode. Same 1% = 100ms scale as Max Duration. |
+
+> [!NOTE]
+> PiShock's API has no "stop" operation to cancel a shock or vibration early - unlike OpenShock, disabling the app or ending Dynamic Mode can't cut off a command already in progress on a PiShock device; it just finishes out its (1-15 second) duration on its own. The app log will note this when it happens.
 
 ## Third Party Resources
 

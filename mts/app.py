@@ -28,8 +28,8 @@ from .constants import (
     resource_path,
 )
 from .modals import APIConfigModal, OSCConfigModal, ShockerConfigModal
-from .openshock_api import OpenShockClient
 from .osc_bridge import OSCBridge
+from .shocker_client import build_client
 from .session_log import finalize_session, recover_previous_session, update_session_state
 from .version import __version__
 
@@ -44,7 +44,7 @@ class TailShockerApp:
         self.root.geometry("500x740")
 
         self.config, config_error = load_config()
-        self.client = OpenShockClient(self.config.api_key, self.config.shocker_ids, self.config.shocker_mode)
+        self.client = build_client(self.config)
 
         self.is_active = True
         self.last_shock_time = 0.0
@@ -128,7 +128,8 @@ class TailShockerApp:
 
         self.max_duration_var = tk.DoubleVar(value=1.0)
         self.max_duration_slider = tk.Scale(
-            slider_frame, from_=0.3, to=10.0, resolution=0.1, orient=tk.HORIZONTAL,
+            slider_frame, from_=self.client.MIN_DURATION_MS / 1000, to=10.0,
+            resolution=self.client.DURATION_RESOLUTION_S, orient=tk.HORIZONTAL,
             label="Maximum Allowed Duration (Seconds)", variable=self.max_duration_var
         )
         self.max_duration_slider.pack(fill=tk.X)
@@ -248,7 +249,8 @@ class TailShockerApp:
 
     def on_mts_duration(self, address, *args):
         if args:
-            val = min(max(float(args[0]), 0.03), 1.0)
+            min_val = self.client.MIN_DURATION_MS / 1000 / 10.0
+            val = min(max(float(args[0]), min_val), 1.0)
             seconds = val * 10.0
             self.root.after(0, self._set_var_from_osc, self.max_duration_var, round(seconds, 1))
 
@@ -286,7 +288,8 @@ class TailShockerApp:
         max_d = self.max_duration_var.get()
         action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
 
-        duration_s = round(random.uniform(0.3, max_d), 2) if max_d > 0.3 else 0.3
+        min_d = self.client.MIN_DURATION_MS / 1000
+        duration_s = round(random.uniform(min_d, max_d), 2) if max_d > min_d else min_d
         duration_ms = int(duration_s * 1000)
         intensity = random.randint(1, max_i) if max_i > 1 else 1
 
@@ -294,7 +297,7 @@ class TailShockerApp:
             self._increment_shock_count()
 
         self.log_message(f"Triggering Burst: {intensity}% intensity for {duration_s}s ({action_type})")
-        threading.Thread(target=self.send_openshock_command, args=(intensity, duration_ms, action_type), daemon=True).start()
+        threading.Thread(target=self.send_shocker_command, args=(intensity, duration_ms, action_type), daemon=True).start()
 
     def dynamic_shock_loop(self):
         with self.lock:
@@ -309,6 +312,9 @@ class TailShockerApp:
             self._increment_shock_count()
 
         accumulated_time = 0.0
+        pulse_interval = self.client.DYNAMIC_PULSE_INTERVAL_S
+        pulse_duration_ms = self.client.DYNAMIC_PULSE_DURATION_MS
+        last_pulse_time = 0.0
 
         while self.is_active and self.dynamic_mode_var.get() and self.is_grabbed and self.current_stretch > 0.1:
             max_i = self.max_intensity_var.get()
@@ -318,7 +324,10 @@ class TailShockerApp:
 
             action_type = "Vibrate" if self.test_mode_var.get() else "Shock"
 
-            self.send_openshock_command(intensity, 400, action_type, log_success=False)
+            now = time.time()
+            if now - last_pulse_time >= pulse_interval:
+                self.send_shocker_command(intensity, pulse_duration_ms, action_type, log_success=False)
+                last_pulse_time = now
             time.sleep(0.2)
 
             if is_real_shock:
@@ -328,7 +337,7 @@ class TailShockerApp:
                     accumulated_time -= 1.0
 
         if self.is_active:
-            self.send_openshock_command(0, 300, "Stop", log_success=False)
+            self.send_shocker_command(0, self.client.MIN_DURATION_MS, "Stop", log_success=False)
 
         self.log_message("Physbone Stretch: Ended.")
 
@@ -337,16 +346,18 @@ class TailShockerApp:
             self.last_shock_time = time.time()
             self.root.after(0, self._update_cooldown_ui)
 
-    def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
+    def send_shocker_command(self, intensity, duration_ms, action_type, log_success=True):
         result = self.client.send(intensity, duration_ms, action_type)
         if result is None:
+            if log_success and action_type == "Stop" and self.client.is_configured:
+                self.log_message(f"{self.client.PROVIDER_LABEL} has no immediate stop command - the in-progress shock/vibrate will finish on its own.")
             return
         success, message = result
         if log_success:
             self.log_message(message)
 
     def send_halt_command(self):
-        self.send_openshock_command(0, 300, "Stop")
+        self.send_shocker_command(0, self.client.MIN_DURATION_MS, "Stop")
 
     def _increment_shock_count(self):
         with self.lock:
@@ -422,13 +433,28 @@ class TailShockerApp:
         except Exception as e:
             messagebox.showerror("Error", f"Could not write configuration file:\n{e}")
 
+    def _apply_duration_bounds(self):
+        min_s = self.client.MIN_DURATION_MS / 1000
+        self.max_duration_slider.config(from_=min_s, resolution=self.client.DURATION_RESOLUTION_S)
+        if self.max_duration_var.get() < min_s:
+            self.max_duration_var.set(min_s)
+
     def open_api_config(self):
-        modal = APIConfigModal(self.root, "API Configuration", self.config.api_key)
+        modal = APIConfigModal(
+            self.root, "API Configuration",
+            self.config.provider, self.config.openshock_api_key,
+            self.config.pishock_username, self.config.pishock_api_key,
+        )
         if modal.result:
-            self.config.api_key = modal.result["api_key"]
-            self.client.api_key = self.config.api_key
+            self.config.provider = modal.result["provider"]
+            self.config.openshock_api_key = modal.result["openshock_api_key"]
+            self.config.pishock_username = modal.result["pishock_username"]
+            self.config.pishock_api_key = modal.result["pishock_api_key"]
+
+            self.client = build_client(self.config)
+            self._apply_duration_bounds()
             self._save_config()
-            self.log_message("API configuration saved.")
+            self.log_message(f"API configuration saved. Active provider: {self.client.PROVIDER_LABEL}.")
 
     def open_osc_config(self):
         modal = OSCConfigModal(self.root, "OSC Configuration", self.config.param_grabbed, self.config.param_stretch)
@@ -447,12 +473,25 @@ class TailShockerApp:
                 threading.Thread(target=self._restart_osc_server, daemon=True).start()
 
     def open_shocker_config(self):
-        modal = ShockerConfigModal(self.root, "Shocker Configuration", self.config.shocker_ids, self.config.shocker_mode)
+        if self.config.provider == "pishock":
+            current_ids, current_mode = self.config.pishock_share_codes, self.config.pishock_shocker_mode
+        else:
+            current_ids, current_mode = self.config.openshock_shocker_ids, self.config.openshock_shocker_mode
+
+        modal = ShockerConfigModal(
+            self.root, "Shocker Configuration", current_ids, current_mode, id_label=self.client.ID_LABEL
+        )
         if modal.result:
-            self.config.shocker_ids = modal.result["shocker_ids"]
-            self.config.shocker_mode = modal.result["shocker_mode"]
-            self.client.shocker_ids = self.config.shocker_ids
-            self.client.shocker_mode = self.config.shocker_mode
+            if self.config.provider == "pishock":
+                self.config.pishock_share_codes = modal.result["shocker_ids"]
+                self.config.pishock_shocker_mode = modal.result["shocker_mode"]
+                self.client.share_codes = self.config.pishock_share_codes
+                self.client.shocker_mode = self.config.pishock_shocker_mode
+            else:
+                self.config.openshock_shocker_ids = modal.result["shocker_ids"]
+                self.config.openshock_shocker_mode = modal.result["shocker_mode"]
+                self.client.shocker_ids = self.config.openshock_shocker_ids
+                self.client.shocker_mode = self.config.openshock_shocker_mode
 
             self._save_config()
             self.log_message("Shocker configuration saved.")

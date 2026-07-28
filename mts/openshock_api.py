@@ -4,13 +4,21 @@ from typing import List, Optional, Tuple
 import requests
 
 from .constants import USER_AGENT
+from .shocker_client import ShockerClient
 
 CONTROL_URL = "https://api.openshock.app/2/shockers/control"
 ACTION_TYPES = {"Stop": 0, "Shock": 1, "Vibrate": 2, "Sound": 3}
 
 
-class OpenShockClient:
+class OpenShockClient(ShockerClient):
     """Thin wrapper around the OpenShock HTTP control API."""
+
+    PROVIDER_KEY = "openshock"
+    PROVIDER_LABEL = "OpenShock"
+    ID_LABEL = "Shocker ID"
+    MIN_DURATION_MS = 300
+    MAX_DURATION_MS = 10000
+    DURATION_RESOLUTION_S = 0.1
 
     def __init__(self, api_key: str = "", shocker_ids: Optional[List[str]] = None, shocker_mode: str = "All"):
         self.api_key = api_key

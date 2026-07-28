@@ -3,22 +3,66 @@ from tkinter import simpledialog
 
 
 class APIConfigModal(simpledialog.Dialog):
-    def __init__(self, parent, title, current_key):
-        self.current_key = current_key
+    def __init__(self, parent, title, provider, openshock_api_key, pishock_username, pishock_api_key):
+        self.current_provider = provider
+        self.current_openshock_api_key = openshock_api_key
+        self.current_pishock_username = pishock_username
+        self.current_pishock_api_key = pishock_api_key
         self.result = None
         super().__init__(parent, title)
 
     def body(self, master):
-        tk.Label(master, text="OpenShock API Key:", anchor="w").pack(fill=tk.X, pady=(5, 2))
-        self.key_entry = tk.Entry(master, width=55)
-        self.key_entry.insert(0, self.current_key)
-        self.key_entry.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(master, text="Provider:", anchor="w").pack(fill=tk.X, pady=(5, 2))
 
-        return self.key_entry
+        self.provider_var = tk.StringVar(value=self.current_provider)
+        provider_frame = tk.Frame(master)
+        provider_frame.pack(fill=tk.X, pady=(0, 10))
+        tk.Radiobutton(
+            provider_frame, text="OpenShock", variable=self.provider_var, value="openshock",
+            command=self._update_visible_fields
+        ).pack(side=tk.LEFT)
+        tk.Radiobutton(
+            provider_frame, text="PiShock", variable=self.provider_var, value="pishock",
+            command=self._update_visible_fields
+        ).pack(side=tk.LEFT, padx=(10, 0))
+
+        tk.Frame(master, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=(0, 10))
+
+        self.openshock_frame = tk.Frame(master)
+        tk.Label(self.openshock_frame, text="OpenShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.openshock_key_entry = tk.Entry(self.openshock_frame, width=55)
+        self.openshock_key_entry.insert(0, self.current_openshock_api_key)
+        self.openshock_key_entry.pack(fill=tk.X)
+
+        self.pishock_frame = tk.Frame(master)
+        tk.Label(self.pishock_frame, text="PiShock Username:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.pishock_username_entry = tk.Entry(self.pishock_frame, width=55)
+        self.pishock_username_entry.insert(0, self.current_pishock_username)
+        self.pishock_username_entry.pack(fill=tk.X, pady=(0, 8))
+
+        tk.Label(self.pishock_frame, text="PiShock API Key:", anchor="w").pack(fill=tk.X, pady=(0, 2))
+        self.pishock_key_entry = tk.Entry(self.pishock_frame, width=55)
+        self.pishock_key_entry.insert(0, self.current_pishock_api_key)
+        self.pishock_key_entry.pack(fill=tk.X)
+
+        self._update_visible_fields()
+
+        return self.openshock_key_entry if self.current_provider == "openshock" else self.pishock_username_entry
+
+    def _update_visible_fields(self):
+        if self.provider_var.get() == "pishock":
+            self.openshock_frame.pack_forget()
+            self.pishock_frame.pack(fill=tk.X, pady=(0, 10))
+        else:
+            self.pishock_frame.pack_forget()
+            self.openshock_frame.pack(fill=tk.X, pady=(0, 10))
 
     def apply(self):
         self.result = {
-            "api_key": self.key_entry.get().strip()
+            "provider": self.provider_var.get(),
+            "openshock_api_key": self.openshock_key_entry.get().strip(),
+            "pishock_username": self.pishock_username_entry.get().strip(),
+            "pishock_api_key": self.pishock_key_entry.get().strip(),
         }
 
 
@@ -50,9 +94,10 @@ class OSCConfigModal(simpledialog.Dialog):
 
 
 class ShockerConfigModal(simpledialog.Dialog):
-    def __init__(self, parent, title, current_ids, current_mode):
+    def __init__(self, parent, title, current_ids, current_mode, id_label="Shocker ID"):
         self.current_ids = list(current_ids)
         self.current_mode = current_mode
+        self.id_label = id_label
         self.result = None
         super().__init__(parent, title)
 
@@ -68,7 +113,7 @@ class ShockerConfigModal(simpledialog.Dialog):
 
         tk.Frame(master, height=2, bd=1, relief=tk.SUNKEN).pack(fill=tk.X, pady=10)
 
-        tk.Label(master, text="Shocker IDs:", anchor="w").pack(fill=tk.X, pady=(5, 2))
+        tk.Label(master, text=f"{self.id_label}s:", anchor="w").pack(fill=tk.X, pady=(5, 2))
 
         list_frame = tk.Frame(master)
         list_frame.pack(fill=tk.BOTH, expand=True)

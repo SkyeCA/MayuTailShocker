@@ -5,7 +5,7 @@ name = "mayu-tail-shocker"
 # dialog and bumped by bump_version.py). This app isn't published as a wheel,
 # so this number is otherwise unused.
 version = "0.0.0"
-description = "Sends OpenShock commands over VRChat OSC when a Mayu's tail is grabbed and pulled."
+description = "Sends OpenShock or PiShock commands over VRChat OSC when a Mayu's tail is grabbed and pulled."
 requires-python = ">=3.9"
 dependencies = [
     "python-osc>=1.8.3",
