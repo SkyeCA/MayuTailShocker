@@ -28,9 +28,12 @@ class ShockerClient(ABC):
         ...
 
     @abstractmethod
-    def send(self, intensity: int, duration_ms: int, action_type: str) -> Optional[Tuple[bool, str]]:
+    def send(self, intensity: int, duration_ms: int, action_type: str, force_all: bool = False) -> Optional[Tuple[bool, str]]:
         """Send a control command. Returns (success, message), or None if unconfigured
-        or the action isn't supported by this provider (e.g. PiShock has no Stop)."""
+        or the action isn't supported by this provider (e.g. PiShock has no Stop).
+
+        force_all bypasses "Random" shocker mode and targets every configured
+        shocker - used by the manual test command."""
         ...
 
 

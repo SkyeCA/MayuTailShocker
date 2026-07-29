@@ -64,6 +64,11 @@ class PayloadTests(unittest.TestCase):
         OpenShockClient(api_key="key", shocker_ids=["only"], shocker_mode="Random").send(10, 100, "Shock")
         self.assertEqual([s["id"] for s in self.sent_payload()["shocks"]], ["only"])
 
+    @patch("mts.openshock_api.random.choice", return_value="b")
+    def test_force_all_overrides_random_mode(self, mock_choice):
+        OpenShockClient(api_key="key", shocker_ids=["a", "b", "c"], shocker_mode="Random").send(10, 100, "Vibrate", force_all=True)
+        self.assertEqual([s["id"] for s in self.sent_payload()["shocks"]], ["a", "b", "c"])
+
     def test_action_type_is_mapped_to_the_correct_code(self):
         OpenShockClient(api_key="key", shocker_ids=["a"]).send(10, 100, "Stop")
         self.assertEqual(self.sent_payload()["shocks"][0]["type"], 0)

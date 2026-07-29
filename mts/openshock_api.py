@@ -29,13 +29,17 @@ class OpenShockClient(ShockerClient):
     def is_configured(self) -> bool:
         return bool(self.api_key and self.shocker_ids)
 
-    def _target_ids(self) -> List[str]:
-        if self.shocker_mode == "Random" and len(self.shocker_ids) > 1:
+    def _target_ids(self, force_all: bool = False) -> List[str]:
+        if not force_all and self.shocker_mode == "Random" and len(self.shocker_ids) > 1:
             return [random.choice(self.shocker_ids)]
         return self.shocker_ids
 
-    def send(self, intensity: int, duration_ms: int, action_type: str) -> Optional[Tuple[bool, str]]:
-        """Send a control command. Returns (success, message), or None if unconfigured."""
+    def send(self, intensity: int, duration_ms: int, action_type: str, force_all: bool = False) -> Optional[Tuple[bool, str]]:
+        """Send a control command. Returns (success, message), or None if unconfigured.
+
+        force_all bypasses "Random" shocker mode and targets every configured
+        shocker - used by the manual test command.
+        """
         if not self.is_configured:
             return None
 
@@ -43,7 +47,7 @@ class OpenShockClient(ShockerClient):
         payload = {
             "shocks": [
                 {"id": sid, "type": action_int, "intensity": intensity, "duration": duration_ms}
-                for sid in self._target_ids()
+                for sid in self._target_ids(force_all)
             ],
             "customName": "MayuTailShocker",
         }

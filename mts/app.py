@@ -140,6 +140,8 @@ class TailShockerApp:
         file_menu.add_command(label="Shocker Config", command=self.open_shocker_config)
         file_menu.add_command(label="OSC Config", command=self.open_osc_config)
         file_menu.add_separator()
+        file_menu.add_command(label="Test Vibration", command=self.test_vibration)
+        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit_app)
         menubar.add_cascade(label="File", menu=file_menu)
 
@@ -394,6 +396,23 @@ class TailShockerApp:
 
     def send_halt_command(self):
         self.send_shocker_command(0, self.client.MIN_DURATION_MS, "Stop")
+
+    def test_vibration(self):
+        """Manual test command: a 3s full-intensity Vibrate to every configured
+        tracker, regardless of the Enable/Disable state, cooldown, or Random
+        shocker mode - it's meant to verify hardware setup, not to be a real
+        trigger."""
+        if not self.client.is_configured:
+            self.log_message("Cannot run test: provider not configured. Go to File > API Config and File > Shocker Config first.")
+            return
+        self.log_message("Test: sending 3s full-intensity vibration to all trackers...")
+        threading.Thread(target=self._send_test_vibration, daemon=True).start()
+
+    def _send_test_vibration(self):
+        result = self.client.send(100, 3000, "Vibrate", force_all=True)
+        if result is not None:
+            success, message = result
+            self.log_message(message)
 
     def _increment_shock_count(self):
         with self.lock:
