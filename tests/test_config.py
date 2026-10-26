@@ -49,7 +49,8 @@ class LoadConfigTests(ConfigTestCase):
 
     def test_corrupt_file_reports_parse_error(self):
         self.config_path.write_text("{not valid json")
-        cfg, error = load_config()
+        with self.assertLogs("mts.config", "WARNING"):
+            cfg, error = load_config()
         self.assertEqual(error, "parse_error")
         self.assertEqual(cfg, AppConfig())
 

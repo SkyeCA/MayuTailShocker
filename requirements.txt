@@ -1,3 +1,5 @@
+# For pip and build.bat. Must match the dependencies in pyproject.toml (used by uv);
+# tests/test_requirements.py checks that they do.
 python-osc>=1.8.3
 requests>=2.31.0
 customtkinter>=6.0.0

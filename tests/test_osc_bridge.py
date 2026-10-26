@@ -60,6 +60,30 @@ class OSCBridgeTests(unittest.TestCase):
         finally:
             bridge.stop()
 
+    def test_a_failing_handler_is_logged_and_the_listener_keeps_running(self):
+        received = []
+
+        def failing(address, *args):
+            raise ValueError("bad value")
+
+        bridge = OSCBridge("127.0.0.1", 0, 0)
+        bridge.start({"/fails": failing, "/works": lambda address, *args: received.append(args)})
+        try:
+            listen_port = bridge.server.server_address[1]
+            with self.assertLogs("mts.osc_bridge", "ERROR") as logs:
+                with SimpleUDPClient("127.0.0.1", listen_port) as client:
+                    client.send_message("/fails", 1)
+                    client.send_message("/works", 2)
+
+                deadline = time.time() + 2
+                while not received and time.time() < deadline:
+                    time.sleep(0.02)
+
+            self.assertEqual(received, [(2,)])
+            self.assertIn("ValueError: bad value", logs.output[0])
+        finally:
+            bridge.stop()
+
     def test_message_to_an_unmapped_address_is_ignored_not_fatal(self):
         received = []
         bridge = OSCBridge("127.0.0.1", 0, 0)

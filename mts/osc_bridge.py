@@ -1,8 +1,17 @@
+import logging
 import threading
 
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
+
+logger = logging.getLogger(__name__)
+
+
+class _Server(BlockingOSCUDPServer):
+    def handle_error(self, request, client_address):
+        # The default prints to stderr, which the built exe doesn't have.
+        logger.exception("Error handling OSC message from %s", client_address)
 
 
 class OSCBridge:
@@ -20,7 +29,7 @@ class OSCBridge:
         for address, handler in handlers.items():
             dispatcher.map(address, handler)
 
-        self.server = BlockingOSCUDPServer((self.ip, self.listen_port), dispatcher)
+        self.server = _Server((self.ip, self.listen_port), dispatcher)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -34,7 +43,7 @@ class OSCBridge:
                 self.server.shutdown()
                 self.server.server_close()
             except Exception:
-                pass
+                logger.warning("Error stopping the OSC listener", exc_info=True)
 
     def send(self, address, value):
         try:
