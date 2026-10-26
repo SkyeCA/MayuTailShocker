@@ -62,7 +62,9 @@ class Dial(ctk.CTkFrame):
     # Public API
     # ------------------------------------------------------------------
     def set(self, value):
-        self._value = _snap(value, self._from, self._to, self._step, self._integer)
+        # Show the value exactly, not snapped to step: the avatar menu can set values
+        # between steps (e.g. a 3.3 s cooldown), and the dial must match what's in effect.
+        self._value = min(max(value, self._from), self._to)
         self._render()
 
     def get(self):
