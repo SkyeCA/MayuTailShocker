@@ -69,11 +69,13 @@ ever seen: have listeners push onto a `queue.Queue` that the Tk thread drains fr
   build machine. It also has no `errorlevel` checks: it signs after a failed PyInstaller run,
   and the version is bumped even when the build fails.
 
-### Architecture notes
+## Design notes
 
-- `AppConfig` and `OpenShockClient` both hold the API token, shocker IDs and mode;
-  `ShockEngine.update_config` keeps them in sync by hand. The client could read from the
-  config instead.
+- `OpenShockClient` reads the token, shocker IDs and mode straight from the live `AppConfig`.
+  `ShockEngine.update_config` saves a copy first and only then applies the changes, so the
+  client never sees values that failed to save. The engine talks to the client only through
+  `send()` and `is_configured`. If another backend is ever added (PiShock support was
+  planned once, but is dropped for the foreseeable future), keep it behind that interface.
 
 ## Under consideration (do not implement unless asked)
 
