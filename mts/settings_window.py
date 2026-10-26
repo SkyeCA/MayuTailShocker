@@ -5,6 +5,7 @@ import customtkinter as ctk
 from .config import APPEARANCE_MODES
 from .constants import DEFAULT_PARAM_GRABBED, DEFAULT_PARAM_STRETCH, OPENSHOCK_API_TOKENS_URL
 from .theme import MUTED_TEXT, SEGMENTED, body_font, heading_font, link_label, title_font
+from .windowing import center_window
 
 MODE_LABELS = {"All": "All shockers", "Random": "One at random"}
 PAGES = ("OpenShock", "Shockers", "OSC", "Appearance")
@@ -60,6 +61,7 @@ class SettingsWindow(ctk.CTkToplevel):
         else:
             self.show_page(PAGES[0])
 
+        center_window(self, parent)
         self.protocol("WM_DELETE_WINDOW", self.cancel)
         self.bind("<Escape>", lambda e: self.cancel())
         # grab_set fails if the window isn't viewable yet.

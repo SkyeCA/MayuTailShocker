@@ -38,6 +38,7 @@ from .theme import (
     title_font,
 )
 from .version import __version__
+from .windowing import center_window
 
 OUTPUT_VIBRATE, OUTPUT_SHOCK = "Vibrate", "Shock"
 MODE_RANDOM, MODE_STRETCH = "Random", "Stretch"
@@ -51,7 +52,7 @@ MODE_HINTS = {
 DIALS = (
     ("max_intensity", "Intensity", 1, 100, 1, "{}%"),
     ("max_duration", "Duration", 0.3, 10.0, 0.1, "{:.1f} s"),
-    ("cooldown", "Cooldown", 1.0, 10.0, 0.5, "{:.1f} s"),
+    ("cooldown", "Cooldown", 1.0, 10.0, 0.1, "{:.1f} s"),
 )
 
 LOG_HISTORY = 1000  # lines kept for the Logs window
@@ -89,6 +90,7 @@ class TailShockerApp(EngineListener):
         self._apply_settings(self.engine.settings)
         self._render_active(self.engine.is_active)
         self._render_setup_banner()
+        center_window(self.root)
         self._log_config_status(config_error)
         self.engine.start()
         self._poll_tail()
@@ -399,6 +401,7 @@ class TailShockerApp(EngineListener):
         self._log_window = window
         self._append_to_log_view("".join(self._log_lines))
         self._log_view.see("end")
+        center_window(window, self.root)
 
         window.protocol("WM_DELETE_WINDOW", close)
         window.bind("<Escape>", lambda e: close())
@@ -425,6 +428,7 @@ class TailShockerApp(EngineListener):
         link_label(links, ABOUT_URL.split("//")[-1], ABOUT_URL).pack(side="left")
         ctk.CTkLabel(links, text="  ·  ", text_color=MUTED_TEXT).pack(side="left")
         link_label(links, "GitHub", GITHUB_URL).pack(side="left")
+        center_window(window, self.root)
 
         window.bind("<Escape>", lambda e: window.destroy())
         window.after(100, window.lift)
