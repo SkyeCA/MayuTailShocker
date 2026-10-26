@@ -42,18 +42,18 @@ class Dial(ctk.CTkFrame):
         self._enabled = True
         self._font_family = ctk.CTkFont().cget("family")
 
-        self._canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, takefocus=1, cursor="hand2")
-        self._canvas.pack()
+        self._dial_canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, takefocus=1, cursor="hand2")
+        self._dial_canvas.pack()
         self._caption = ctk.CTkLabel(self, text=caption, font=body_font(), text_color=MUTED_TEXT)
         self._caption.pack()
 
-        self._canvas.bind("<Button-1>", self._on_press)
-        self._canvas.bind("<B1-Motion>", self._on_drag)
-        self._canvas.bind("<MouseWheel>", self._on_wheel)
-        self._canvas.bind("<Button-4>", lambda e: self._nudge(1))  # X11 wheel
-        self._canvas.bind("<Button-5>", lambda e: self._nudge(-1))
+        self._dial_canvas.bind("<Button-1>", self._on_press)
+        self._dial_canvas.bind("<B1-Motion>", self._on_drag)
+        self._dial_canvas.bind("<MouseWheel>", self._on_wheel)
+        self._dial_canvas.bind("<Button-4>", lambda e: self._nudge(1))  # X11 wheel
+        self._dial_canvas.bind("<Button-5>", lambda e: self._nudge(-1))
         for key, direction in (("<Up>", 1), ("<Right>", 1), ("<Down>", -1), ("<Left>", -1)):
-            self._canvas.bind(key, lambda e, d=direction: self._nudge(d))
+            self._dial_canvas.bind(key, lambda e, d=direction: self._nudge(d))
 
         self._ready = True
         self._render()
@@ -70,7 +70,7 @@ class Dial(ctk.CTkFrame):
 
     def set_enabled(self, enabled):
         self._enabled = enabled
-        self._canvas.configure(cursor="hand2" if enabled else "arrow", takefocus=1 if enabled else 0)
+        self._dial_canvas.configure(cursor="hand2" if enabled else "arrow", takefocus=1 if enabled else 0)
         self._render()
 
     # ------------------------------------------------------------------
@@ -99,13 +99,13 @@ class Dial(ctk.CTkFrame):
 
     def _on_press(self, event):
         if self._enabled:
-            self._canvas.focus_set()
+            self._dial_canvas.focus_set()
             self._on_drag(event)
 
     def _on_drag(self, event):
         if not self._enabled:
             return
-        center = int(self._canvas.cget("width")) / 2
+        center = int(self._dial_canvas.cget("width")) / 2
         dx, dy = event.x - center, event.y - center
         if math.hypot(dx, dy) < center * 0.2:
             return  # too close to the middle to tell which way the user means
@@ -177,7 +177,7 @@ class Dial(ctk.CTkFrame):
         value_font = (self._font_family, -round(self._apply_widget_scaling(self._size * 0.16)), "bold")
         # The open bottom of the arc is empty space; stop just below the lowest the knob can sit.
         lowest = center + radius * math.sin(math.radians(self.START)) + knob_radius + big * 0.05
-        canvas = self._canvas
+        canvas = self._dial_canvas
         canvas.configure(width=size, height=math.ceil(lowest / self.SUPERSAMPLE), bg=mode(self._bg_color))
         canvas.delete("all")
         canvas.create_image(0, 0, image=self._photo, anchor="nw")
