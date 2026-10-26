@@ -64,9 +64,13 @@ With pip:
 
 Run `build.bat` in the project directory to compile a standalone executable.
 
+### Troubleshooting
+
+The app writes `app_log.txt` next to the executable (or `tail_shocker.py` when running from source). It holds everything shown in the Logs window plus any errors, so please attach it when reporting a bug.
+
 ### Running Tests
 
-The `tests/` folder contains a unit test suite covering config loading/saving, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It only uses the standard library, so no extra install is needed:
+The `tests/` folder contains a unit test suite covering config loading/saving, the shock engine, the OpenShock API client, session/shock-log persistence, and the OSC bridge. It uses the standard library's `unittest`, so beyond the app's own dependencies nothing extra is needed:
 
 ```bash
 python -m unittest discover -v

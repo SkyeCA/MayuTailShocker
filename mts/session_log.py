@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime
 from typing import Optional
 
 from .constants import SESSION_STATE_FILE, SHOCK_LOG_FILE
+
+logger = logging.getLogger(__name__)
 
 
 def _append_log(message: str):
@@ -13,7 +16,7 @@ def _append_log(message: str):
         with open(SHOCK_LOG_FILE, "a") as f:
             f.write(f"[{timestamp}] {message}\n")
     except Exception:
-        pass
+        logger.warning("Could not write to %s", SHOCK_LOG_FILE, exc_info=True)
 
 
 def update_session_state(shock_count: int):
@@ -29,8 +32,9 @@ def update_session_state(shock_count: int):
             os.replace(tmp_path, SESSION_STATE_FILE)
         except Exception:
             os.remove(tmp_path)
+            raise
     except Exception:
-        pass
+        logger.warning("Could not write %s", SESSION_STATE_FILE, exc_info=True)
 
 
 def clear_session_state():
@@ -39,7 +43,7 @@ def clear_session_state():
     except FileNotFoundError:
         pass
     except Exception:
-        pass
+        logger.warning("Could not remove %s", SESSION_STATE_FILE, exc_info=True)
 
 
 def finalize_session(shock_count: int):
@@ -62,6 +66,7 @@ def recover_previous_session() -> Optional[int]:
             data = json.load(f)
         shock_count = int(data.get("shock_count", 0))
     except Exception:
+        logger.warning("Could not read %s", SESSION_STATE_FILE, exc_info=True)
         shock_count = None
 
     if shock_count:

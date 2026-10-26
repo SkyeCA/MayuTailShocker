@@ -29,14 +29,16 @@ class SendResultTests(unittest.TestCase):
 
     @patch("mts.openshock_api.requests.post")
     def test_non_200_status_is_reported_as_failure(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=500)
-        success, message = OpenShockClient(api_key="key", shocker_ids=["a"]).send(50, 500, "Shock")
+        mock_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
+        with self.assertLogs("mts.openshock_api", "WARNING"):
+            success, message = OpenShockClient(api_key="key", shocker_ids=["a"]).send(50, 500, "Shock")
         self.assertFalse(success)
         self.assertIn("500", message)
 
     @patch("mts.openshock_api.requests.post", side_effect=TimeoutError("boom"))
     def test_network_error_is_a_fail_safe_not_a_crash(self, mock_post):
-        success, message = OpenShockClient(api_key="key", shocker_ids=["a"]).send(50, 500, "Shock")
+        with self.assertLogs("mts.openshock_api", "WARNING"):
+            success, message = OpenShockClient(api_key="key", shocker_ids=["a"]).send(50, 500, "Shock")
         self.assertFalse(success)
         self.assertIn("FAIL SAFE", message)
 
@@ -59,6 +61,10 @@ class PayloadTests(unittest.TestCase):
     def test_random_mode_targets_exactly_one_shocker(self, mock_choice):
         OpenShockClient(api_key="key", shocker_ids=["a", "b", "c"], shocker_mode="Random").send(10, 100, "Shock")
         self.assertEqual([s["id"] for s in self.sent_payload()["shocks"]], ["b"])
+
+    def test_stop_targets_every_shocker_even_in_random_mode(self):
+        OpenShockClient(api_key="key", shocker_ids=["a", "b", "c"], shocker_mode="Random").send(0, 300, "Stop")
+        self.assertEqual([s["id"] for s in self.sent_payload()["shocks"]], ["a", "b", "c"])
 
     def test_random_mode_with_a_single_shocker_still_targets_it(self):
         OpenShockClient(api_key="key", shocker_ids=["only"], shocker_mode="Random").send(10, 100, "Shock")

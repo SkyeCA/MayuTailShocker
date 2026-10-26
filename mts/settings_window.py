@@ -13,9 +13,8 @@ PAGES = ("OpenShock", "Shockers", "OSC", "Appearance")
 
 class SettingsWindow(ctk.CTkToplevel):
     """One window for everything in config.json, with a category sidebar on the left
-    and the selected category's options on the right. Only sections that actually
-    changed are handed to the engine, so e.g. the OSC listener restarts only when
-    needed."""
+    and the selected category's options on the right. The engine applies only what
+    actually changed, so e.g. the OSC listener restarts only when needed."""
 
     def __init__(self, parent, engine, on_saved=None):
         super().__init__(parent)
@@ -236,25 +235,21 @@ class SettingsWindow(ctk.CTkToplevel):
         self.destroy()
 
     def save(self):
-        config = self.engine.config
-        api_key = self.api_key_entry.get().strip()
+        # An ID typed in but not yet added would otherwise be silently dropped.
+        self.add_id()
         mode = next(key for key, label in MODE_LABELS.items() if label == self.mode_button.get())
-        param_grabbed = self.grab_entry.get().strip() or DEFAULT_PARAM_GRABBED
-        param_stretch = self.stretch_entry.get().strip() or DEFAULT_PARAM_STRETCH
-        appearance = self.appearance_button.get()
 
         try:
-            if api_key != config.api_key:
-                self.engine.set_api_key(api_key)
-            if self.shocker_ids != config.shocker_ids or mode != config.shocker_mode:
-                self.engine.set_shockers(list(self.shocker_ids), mode)
-            if (param_grabbed, param_stretch) != (config.param_grabbed, config.param_stretch):
-                self.engine.set_osc_params(param_grabbed, param_stretch)
-            if appearance != config.appearance_mode:
-                config.appearance_mode = appearance
-                config.save()
+            self.engine.update_config(
+                api_key=self.api_key_entry.get().strip(),
+                shocker_ids=list(self.shocker_ids),
+                shocker_mode=mode,
+                param_grabbed=self.grab_entry.get().strip() or DEFAULT_PARAM_GRABBED,
+                param_stretch=self.stretch_entry.get().strip() or DEFAULT_PARAM_STRETCH,
+                appearance_mode=self.appearance_button.get(),
+            )
         except Exception as e:
-            messagebox.showerror("Error", f"Could not write configuration file:\n{e}", parent=self)
+            messagebox.showerror("Error", f"Could not write configuration file, so nothing was changed:\n{e}", parent=self)
             return
 
         if self.on_saved:

@@ -87,7 +87,8 @@ class RecoverPreviousSessionTests(SessionLogTestCase):
 
     def test_corrupt_state_file_is_handled_gracefully(self):
         self.state_path.write_text("not valid json")
-        recovered = session_log.recover_previous_session()
+        with self.assertLogs("mts.session_log", "WARNING"):
+            recovered = session_log.recover_previous_session()
         self.assertIsNone(recovered)
         self.assertFalse(self.state_path.exists())
 

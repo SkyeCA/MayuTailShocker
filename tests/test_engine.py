@@ -1,4 +1,5 @@
 import struct
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -20,8 +21,11 @@ class FakeOSC:
         self.started = 0
         self.restarted = 0
         self.stopped = 0
+        self.start_error = None
 
     def start(self, handlers):
+        if self.start_error:
+            raise self.start_error
         self.started += 1
 
     def restart(self, handlers):
@@ -40,7 +44,7 @@ class RecordingListener(EngineListener):
         self.active_changes = []
         self.settings_changes = []
         self.shock_counts = []
-        self.cooldowns_started = 0
+        self.status_changes = 0
 
     def on_log(self, message):
         self.logs.append(message)
@@ -54,8 +58,8 @@ class RecordingListener(EngineListener):
     def on_shock_count_changed(self, count):
         self.shock_counts.append(count)
 
-    def on_cooldown_started(self):
-        self.cooldowns_started += 1
+    def on_status_changed(self):
+        self.status_changes += 1
 
 
 class EngineTestCase(unittest.TestCase):
@@ -170,13 +174,46 @@ class ActiveStateTests(EngineTestCase):
         self.assertEqual(self.osc.sent, [])
 
     def test_cooldown_remaining_is_zero_while_disabled_or_in_dynamic_mode(self):
-        self.engine.last_shock_time = 10**12  # far future: always "in cooldown"
+        self.engine.shock_end_time = 10**12  # far future: always "in cooldown"
         self.assertGreater(self.engine.cooldown_remaining(), 0)
         self.engine.update_settings(dynamic=True)
         self.assertEqual(self.engine.cooldown_remaining(), 0.0)
         self.engine.update_settings(dynamic=False)
         self.engine.set_active(False)
         self.assertEqual(self.engine.cooldown_remaining(), 0.0)
+
+
+class SendOrderTests(EngineTestCase):
+    def test_a_shock_still_waiting_to_send_when_disabled_is_dropped(self):
+        pending = []
+        self.engine._spawn = lambda target, *args: pending.append((target, args))
+        self.engine.trigger_shock()  # decided, but its request hasn't gone out yet
+        self.engine.set_active(False)
+        for target, args in pending:
+            target(*args)
+        self.assertEqual(self.sent_commands(), [(0, 300, "Stop")])
+
+    def test_a_stop_waits_for_a_shock_already_being_sent(self):
+        in_flight, release = threading.Event(), threading.Event()
+
+        def send(intensity, duration_ms, action_type):
+            if action_type == "Shock":
+                in_flight.set()
+                release.wait(2)
+            return True, "ok"
+
+        self.client.send.side_effect = send
+        shock = threading.Thread(target=self.engine.send_openshock_command, args=(50, 1000, "Shock"))
+        shock.start()
+        in_flight.wait(2)
+        halt = threading.Thread(target=self.engine.send_halt_command)
+        halt.start()
+        halt.join(0.1)
+        self.assertTrue(halt.is_alive())  # held back until the shock's request completes
+        release.set()
+        shock.join(2)
+        halt.join(2)
+        self.assertEqual([action for _, _, action in self.sent_commands()], ["Shock", "Stop"])
 
 
 class TriggerShockTests(EngineTestCase):
@@ -200,7 +237,7 @@ class TriggerShockTests(EngineTestCase):
     def test_intensity_and_duration_stay_within_the_configured_maximums(self):
         self.engine.update_settings(max_intensity=40, max_duration=2.0, cooldown=1.0)
         for _ in range(50):
-            self.engine.last_shock_time = 0.0
+            self.engine.shock_end_time = 0.0
             self.engine.trigger_shock()
         for intensity, duration_ms, _ in self.sent_commands():
             self.assertTrue(1 <= intensity <= 40)
@@ -210,7 +247,7 @@ class TriggerShockTests(EngineTestCase):
         self.pull()
         self.pull()
         self.assertEqual(len(self.sent_commands()), 1)
-        self.assertEqual(self.listener.cooldowns_started, 1)
+        self.assertEqual(self.listener.status_changes, 1)
 
     def test_nothing_is_sent_while_disabled(self):
         self.engine.set_active(False)
@@ -226,6 +263,54 @@ class TriggerShockTests(EngineTestCase):
     def test_stretch_at_or_below_the_threshold_does_not_trigger(self):
         self.pull(stretch=0.1)
         self.assertEqual(self.sent_commands(), [])
+
+    def test_no_random_shock_while_a_stretch_pull_is_still_ending(self):
+        self.engine.is_dynamic_loop_running = True
+        self.pull()
+        self.assertEqual(self.sent_commands(), [])
+
+
+class CooldownTests(EngineTestCase):
+    """A 10 s shock at t=1000 with a 1 s cooldown."""
+
+    def setUp(self):
+        super().setUp()
+        self.engine.update_settings(max_duration=10.0, cooldown=1.0, vibrate=False)
+        self.now = 1000.0
+        for target, kwargs in (("mts.engine.time.time", {"side_effect": lambda: self.now}),
+                               ("mts.engine.random.uniform", {"return_value": 10.0})):
+            patcher = patch(target, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.engine.trigger_shock()
+
+    def trigger_at(self, now):
+        self.now = now
+        self.client.send.reset_mock()
+        self.engine.trigger_shock()
+        return self.sent_commands()
+
+    def test_cooldown_runs_from_when_the_shock_ends_not_when_it_starts(self):
+        self.assertEqual(self.trigger_at(1005.0), [])  # shock still running
+        self.assertEqual(self.trigger_at(1010.5), [])  # in the cooldown after it
+        self.assertEqual(len(self.trigger_at(1011.5)), 1)
+
+    def test_status_shows_the_running_output_then_the_cooldown(self):
+        self.now = 1005.0
+        self.assertEqual(self.engine.current_output(), "Shock")
+        self.assertEqual(self.engine.cooldown_remaining(), 1.0)
+        self.now = 1010.25
+        self.assertIsNone(self.engine.current_output())
+        self.assertAlmostEqual(self.engine.cooldown_remaining(), 0.75)
+        self.now = 1012.0
+        self.assertEqual(self.engine.cooldown_remaining(), 0.0)
+
+    def test_disabling_cuts_the_shock_short_so_the_cooldown_starts_then(self):
+        self.now = 1002.0
+        self.engine.set_active(False)
+        self.engine.set_active(True)
+        self.assertIsNone(self.engine.current_output())
+        self.assertEqual(len(self.trigger_at(1003.5)), 1)
 
 
 class DynamicModeTests(EngineTestCase):
@@ -261,33 +346,36 @@ class DynamicModeTests(EngineTestCase):
         self.run_loop(iterations=10, stretch=1.0)  # 10 x 0.2s = 2s
         self.assertEqual(self.engine.session_shock_count, 3)
 
-    def test_loop_end_starts_the_cooldown_and_releases_the_running_flag(self):
+    def test_loop_start_and_end_update_the_status_and_release_the_running_flag(self):
         self.run_loop(iterations=1, stretch=1.0)
         self.assertFalse(self.engine.is_dynamic_loop_running)
-        self.assertEqual(self.listener.cooldowns_started, 1)
+        self.assertEqual(self.listener.status_changes, 2)
 
 
 class ConfigTests(EngineTestCase):
     def test_shocker_changes_are_applied_to_the_client_and_saved(self):
-        self.engine.set_shockers(["a", "b"], "Random")
+        self.engine.update_config(shocker_ids=["a", "b"], shocker_mode="Random")
         self.assertEqual(self.client.shocker_ids, ["a", "b"])
         self.assertEqual(self.client.shocker_mode, "Random")
         self.config.save.assert_called_once()
 
     def test_changed_osc_params_restart_the_listener(self):
-        self.engine.set_osc_params("/new/grab", "/new/stretch")
+        self.engine.update_config(param_grabbed="/new/grab", param_stretch="/new/stretch")
         self.assertEqual(self.osc.restarted, 1)
 
-    def test_blank_osc_params_fall_back_to_defaults_without_a_restart(self):
-        self.engine.set_osc_params("", "")
+    def test_unchanged_values_are_not_saved_and_do_not_restart_the_listener(self):
+        self.engine.update_config(api_key=self.config.api_key, param_grabbed=self.config.param_grabbed)
+        self.config.save.assert_not_called()
         self.assertEqual(self.osc.restarted, 0)
 
-    def test_a_failed_save_raises_but_still_restarts_the_listener(self):
+    def test_a_failed_save_raises_and_changes_nothing(self):
         self.config.save.side_effect = OSError("read-only")
         with self.assertRaises(OSError):
-            self.engine.set_osc_params("/new/grab", "/new/stretch")
-        self.assertEqual(self.osc.restarted, 1)
-        self.assertNotIn("OSC configuration saved.", self.listener.logs)
+            self.engine.update_config(api_key="new-key", param_grabbed="/new/grab")
+        self.assertEqual(self.config.api_key, "key")
+        self.assertEqual(self.config.param_grabbed, AppConfig().param_grabbed)
+        self.assertEqual(self.osc.restarted, 0)
+        self.assertNotIn("Configuration saved.", self.listener.logs)
 
 
 class LifecycleTests(EngineTestCase):
@@ -298,11 +386,31 @@ class LifecycleTests(EngineTestCase):
         self.assertIn((MTS_ENABLE, True), self.osc.sent)
         self.assertIn("recovered 4 shock(s)", self.listener.logs[0])
 
-    def test_shutdown_finalizes_once_even_if_called_again(self):
+    def test_a_taken_osc_port_raises_before_touching_session_state(self):
+        # The state file may belong to the instance that has the port.
+        self.osc.start_error = OSError("Address already in use")
+        with self.assertRaises(OSError):
+            self.engine.start()
+        self.mock_recover_previous_session.assert_not_called()
         self.engine.shutdown()
         self.engine.save_shock_stats()
+        self.mock_finalize_session.assert_not_called()
+        self.assertEqual(self.sent_commands(), [])
+
+    def test_shutdown_stops_every_shocker_then_finalizes_once(self):
+        self.engine.start()
+        self.engine.shutdown()
+        self.engine.shutdown()
+        self.engine.save_shock_stats()
+        self.assertEqual(self.sent_commands(), [(0, 300, "Stop")])
         self.mock_finalize_session.assert_called_once_with(0)
         self.assertEqual(self.osc.stopped, 1)
+
+    def test_the_avatar_cannot_re_enable_during_shutdown(self):
+        self.engine.start()
+        self.engine.shutdown()
+        self.engine.on_mts_enable(MTS_ENABLE, True)
+        self.assertFalse(self.engine.is_active)
 
 
 if __name__ == "__main__":

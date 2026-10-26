@@ -102,9 +102,12 @@ class Dial(ctk.CTkFrame):
     def _on_press(self, event):
         if self._enabled:
             self._dial_canvas.focus_set()
-            self._on_drag(event)
+            self._point_at(event, is_drag=False)
 
     def _on_drag(self, event):
+        self._point_at(event, is_drag=True)
+
+    def _point_at(self, event, is_drag):
         if not self._enabled:
             return
         center = int(self._dial_canvas.cget("width")) / 2
@@ -116,7 +119,13 @@ class Dial(ctk.CTkFrame):
             # In the gap at the bottom: stick to whichever end the knob is nearer,
             # rather than jumping between min and max.
             angle = self.SWEEP if self._fraction() > 0.5 else 0
-        self._set_from_user(self._from + angle / self.SWEEP * (self._to - self._from))
+        value = self._from + angle / self.SWEEP * (self._to - self._from)
+        # A drag that carries on past one end, through the gap, comes out at the other
+        # end - e.g. 1% straight to 100%. A real drag never moves that far in one step,
+        # so hold the value until the pointer comes back round.
+        if is_drag and abs(value - self._value) > (self._to - self._from) / 2:
+            return
+        self._set_from_user(value)
 
     def _on_wheel(self, event):
         if event.delta:

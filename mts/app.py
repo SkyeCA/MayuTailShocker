@@ -1,4 +1,5 @@
 import atexit
+import logging
 import signal
 import tkinter as tk
 from collections import deque
@@ -7,6 +8,7 @@ from datetime import datetime
 import customtkinter as ctk
 from PIL import Image
 
+from . import app_log
 from .config import load_config
 from .constants import (
     ABOUT_URL,
@@ -22,6 +24,7 @@ from .openshock_api import OpenShockClient
 from .osc_bridge import OSCBridge
 from .settings_window import SettingsWindow
 from .theme import (
+    ACCENT_TEXT,
     BANNER,
     DANGER,
     DANGER_HOVER,
@@ -59,6 +62,8 @@ LOG_HISTORY = 1000  # lines kept for the Logs window
 
 SETUP_MESSAGE = "SETUP REQUIRED: Open Settings to add your OpenShock API token and shocker IDs."
 
+logger = logging.getLogger(__name__)
+
 
 class TailShockerApp(EngineListener):
     """CustomTkinter front end. All shock/OSC behaviour lives in ShockEngine; this
@@ -85,6 +90,8 @@ class TailShockerApp(EngineListener):
         self._dials = {}
         self._log_lines = deque(maxlen=LOG_HISTORY)
         self._log_window = None
+        self._settings_window = None
+        self._about_window = None
 
         self._build_gui()
         self._apply_settings(self.engine.settings)
@@ -92,7 +99,11 @@ class TailShockerApp(EngineListener):
         self._render_setup_banner()
         center_window(self.root)
         self._log_config_status(config_error)
-        self.engine.start()
+        try:
+            self.engine.start()
+        except OSError as e:
+            self._show_osc_port_error(e)
+            return
         self._poll_tail()
 
     # ------------------------------------------------------------------
@@ -261,7 +272,7 @@ class TailShockerApp(EngineListener):
     def on_shock_count_changed(self, count):
         self.root.after(0, lambda: self.count_value.configure(text=str(count)))
 
-    def on_cooldown_started(self):
+    def on_status_changed(self):
         self.root.after(0, self._render_status)
 
     # ------------------------------------------------------------------
@@ -316,8 +327,15 @@ class TailShockerApp(EngineListener):
             self.status_value.configure(text="Setup needed", text_color=WARNING)
             return
 
+        output = self.engine.current_output()
         remaining_cooldown = self.engine.cooldown_remaining()
-        if remaining_cooldown > 0:
+        if output == OUTPUT_SHOCK:
+            self.status_value.configure(text="Shocking", text_color=DANGER)
+            self._status_job = self.root.after(100, self._render_status)
+        elif output == OUTPUT_VIBRATE:
+            self.status_value.configure(text="Vibrating", text_color=ACCENT_TEXT)
+            self._status_job = self.root.after(100, self._render_status)
+        elif remaining_cooldown > 0:
             self.status_value.configure(text=f"Cooldown {remaining_cooldown:.1f}s", text_color=WARNING)
             self._status_job = self.root.after(100, self._render_status)
         else:
@@ -353,6 +371,7 @@ class TailShockerApp(EngineListener):
             self.setup_banner.pack(fill="x", padx=16, pady=(0, 10), after=self.header)
 
     def log_message(self, message):
+        logger.info(message)
         self.root.after(0, self._safe_log, message)
 
     def _safe_log(self, message):
@@ -373,14 +392,22 @@ class TailShockerApp(EngineListener):
     # ------------------------------------------------------------------
     # Windows
     # ------------------------------------------------------------------
+    def _raise_existing(self, window):
+        """Brings window to the front and returns True if it's still open."""
+        if window is None or not window.winfo_exists():
+            return False
+        window.lift()
+        window.focus_force()
+        return True
+
     def open_settings(self):
-        window = SettingsWindow(self.root, self.engine, on_saved=self._on_settings_saved)
-        self._apply_window_icon(window)
+        if self._raise_existing(self._settings_window):
+            return
+        self._settings_window = SettingsWindow(self.root, self.engine, on_saved=self._on_settings_saved)
+        self._apply_window_icon(self._settings_window)
 
     def open_logs(self):
-        if self._log_window is not None:
-            self._log_window.lift()
-            self._log_window.focus_force()
+        if self._raise_existing(self._log_window):
             return
 
         window = ctk.CTkToplevel(self.root)
@@ -408,7 +435,9 @@ class TailShockerApp(EngineListener):
         window.after(100, window.lift)
 
     def open_about(self):
-        window = ctk.CTkToplevel(self.root)
+        if self._raise_existing(self._about_window):
+            return
+        window = self._about_window = ctk.CTkToplevel(self.root)
         window.title("About")
         # Height follows the content, so there's no empty space under the links.
         window.minsize(300, 0)
@@ -433,6 +462,34 @@ class TailShockerApp(EngineListener):
         window.bind("<Escape>", lambda e: window.destroy())
         window.after(100, window.lift)
 
+    def _show_osc_port_error(self, error):
+        """Without the OSC port the app can't hear VRChat at all, so this replaces the
+        main window with an explanation and a way out."""
+        logger.error("Could not listen for OSC on port %s: %s", OSC_PORT, error)
+        self.root.withdraw()
+
+        window = ctk.CTkToplevel(self.root)
+        window.title("Mayu Tail Shocker")
+        window.minsize(360, 0)
+        window.resizable(False, False)
+        self._apply_window_icon(window)
+
+        ctk.CTkLabel(window, text="Can't connect to VRChat", font=heading_font(16), anchor="w").pack(fill="x", padx=20, pady=(18, 6))
+        ctk.CTkLabel(
+            window, font=body_font(), anchor="w", justify="left", wraplength=360,
+            text=f"OSC port {OSC_PORT} couldn't be opened. Usually another copy of Mayu Tail Shocker, "
+                 "or another OSC app, is already using it. Close it, then start Mayu Tail Shocker again.",
+        ).pack(fill="x", padx=20)
+        ctk.CTkLabel(
+            window, text=str(error), font=body_font(12), text_color=MUTED_TEXT, anchor="w", justify="left", wraplength=360,
+        ).pack(fill="x", padx=20, pady=(8, 0))
+        ctk.CTkButton(window, text="Exit", width=100, command=self.root.destroy).pack(anchor="e", padx=20, pady=16)
+        center_window(window)
+
+        window.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        window.bind("<Escape>", lambda e: self.root.destroy())
+        window.after(100, window.lift)
+
     # ------------------------------------------------------------------
     # App lifecycle
     # ------------------------------------------------------------------
@@ -443,9 +500,12 @@ class TailShockerApp(EngineListener):
 
 
 def main():
+    app_log.setup()
+    logger.info("Mayu Tail Shocker %s starting", __version__)
     ctk.set_default_color_theme("blue")
 
     root = ctk.CTk()
+    app_log.log_tk_errors(root)
     app = TailShockerApp(root)
     root.protocol("WM_DELETE_WINDOW", app.quit_app)
     # Best-effort: Tk maps Windows logoff/shutdown (WM_QUERYENDSESSION) to this protocol.

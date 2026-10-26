@@ -22,6 +22,13 @@ Thumbs.db
 config.json
 secrets.py
 
+# Runtime files written next to the app
+shock_log.txt
+session_state.json
+.session_state_*.tmp
+app_log.txt
+app_log.txt.*
+
 # Builds
 build/
 dist/

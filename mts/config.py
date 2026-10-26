@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional, Tuple
@@ -6,6 +7,8 @@ from typing import List, Optional, Tuple
 from .constants import CONFIG_FILE, DEFAULT_PARAM_GRABBED, DEFAULT_PARAM_STRETCH
 
 APPEARANCE_MODES = ("Dark", "Light", "System")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,6 +42,7 @@ def load_config() -> Tuple[AppConfig, Optional[str]]:
         with open(CONFIG_FILE, "r") as f:
             data = json.load(f)
     except Exception:
+        logger.warning("Could not read %s", CONFIG_FILE, exc_info=True)
         return AppConfig(), "parse_error"
 
     cfg = AppConfig(

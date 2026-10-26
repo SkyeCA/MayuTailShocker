@@ -4,8 +4,6 @@ import time
 from dataclasses import dataclass, replace
 
 from .constants import (
-    DEFAULT_PARAM_GRABBED,
-    DEFAULT_PARAM_STRETCH,
     MTS_COOLDOWN,
     MTS_DURATION,
     MTS_DYNAMIC,
@@ -57,8 +55,9 @@ class EngineListener:
     def on_shock_count_changed(self, count):
         pass
 
-    def on_cooldown_started(self):
-        pass
+    def on_status_changed(self):
+        """A shock or stretch pull started or ended - see current_output and
+        cooldown_remaining."""
 
 
 class ShockEngine:
@@ -74,13 +73,20 @@ class ShockEngine:
         # taking the lock - change it through update_settings.
         self.settings = ShockSettings()
         self.is_active = True
-        self.last_shock_time = 0.0
+        # When the current or last shock should end. We only know when its command was
+        # sent, not when the hardware actually starts, so this is an estimate. The
+        # cooldown runs from here.
+        self.shock_end_time = 0.0
+        self._output = None  # "Shock"/"Vibrate" of the current or last shock
         self.is_grabbed = False
         self.current_stretch = 0.0
         self.session_shock_count = 0
         self.is_dynamic_loop_running = False
-        self._session_finalized = False
+        self._session_open = False  # start() succeeded and the session isn't finalized
+        self._stopping = False
         self.lock = threading.Lock()
+        # Held for each OpenShock request, so commands go out one at a time, in order.
+        self._send_lock = threading.Lock()
 
     def _spawn(self, target, *args):
         threading.Thread(target=target, args=args, daemon=True).start()
@@ -92,22 +98,34 @@ class ShockEngine:
     # Lifecycle
     # ------------------------------------------------------------------
     def start(self):
+        # Raises OSError if the OSC port is taken (e.g. by another instance). Done
+        # first so that case leaves the session state alone - it may be the other
+        # instance's.
+        self.osc.start(self._osc_handlers())
+        self._session_open = True
         recovered = recover_previous_session()
         if recovered:
             self.log(f"Previous session didn't exit cleanly - recovered {recovered} shock(s) into shock_log.txt.")
-        self.osc.start(self._osc_handlers())
         self.sync_osc()
         self.log("System Started.")
 
     def save_shock_stats(self):
         # Idempotent: may be invoked twice (e.g. shutdown then atexit on top of it).
-        if self._session_finalized:
+        if not self._session_open:
             return
-        self._session_finalized = True
+        self._session_open = False
         finalize_session(self.session_shock_count)
 
     def shutdown(self):
+        # Nothing to do if start() failed - the shockers may be in use by another instance.
+        if not self._session_open:
+            return
+        with self.lock:
+            self._stopping = True  # ignore the avatar's Enable from here on
+            self.is_active = False  # nothing new is sent, and a stretch pull ends
+        self.send_halt_command()
         self.save_shock_stats()
+        # Last, as it can block for a moment while the listener thread winds down.
         self.osc.stop()
 
     # ------------------------------------------------------------------
@@ -115,9 +133,12 @@ class ShockEngine:
     # ------------------------------------------------------------------
     def set_active(self, active, from_osc=False):
         with self.lock:
-            if active == self.is_active:
+            if active == self.is_active or self._stopping:
                 return
             self.is_active = active
+            if not active:
+                # The halt below cuts any running shock short, so its cooldown starts now.
+                self.shock_end_time = min(self.shock_end_time, time.time())
 
         if active:
             self.log("System Enabled.")
@@ -148,43 +169,50 @@ class ShockEngine:
                 address, encode = _OSC_SETTINGS[name]
                 self.osc.send(address, encode(getattr(new, name)))
 
+    def current_output(self):
+        """"Shock" or "Vibrate" while one is (estimated to be) running, otherwise None."""
+        if not self.is_active:
+            return None
+        if self.is_dynamic_loop_running or time.time() < self.shock_end_time:
+            return self._output
+        return None
+
     def cooldown_remaining(self):
+        """Cooldown left after the current or last shock, not counting the shock itself."""
         settings = self.settings
         if not self.is_active or settings.dynamic:
             return 0.0
-        return max(settings.cooldown - (time.time() - self.last_shock_time), 0.0)
+        remaining = self.shock_end_time + settings.cooldown - time.time()
+        return min(max(remaining, 0.0), settings.cooldown)
 
     # ------------------------------------------------------------------
     # Config
     # ------------------------------------------------------------------
-    # Each setter applies the change immediately, then saves; a failed save raises
-    # so the caller can report it.
-    def set_api_key(self, api_key):
-        self.config.api_key = api_key
-        self.client.api_key = api_key
-        self.config.save()
-        self.log("API configuration saved.")
+    def update_config(self, **changes):
+        """Saves the given AppConfig fields and applies whichever changed. If the save
+        fails it raises with nothing changed, so the caller can report it."""
+        config = self.config
+        old = {name: getattr(config, name) for name in changes}
+        changed = [name for name, value in changes.items() if value != old[name]]
+        if not changed:
+            return
 
-    def set_shockers(self, shocker_ids, shocker_mode):
-        self.config.shocker_ids = shocker_ids
-        self.config.shocker_mode = shocker_mode
-        self.client.shocker_ids = shocker_ids
-        self.client.shocker_mode = shocker_mode
-        self.config.save()
-        self.log("Shocker configuration saved.")
-
-    def set_osc_params(self, param_grabbed, param_stretch):
-        old_params = (self.config.param_grabbed, self.config.param_stretch)
-        self.config.param_grabbed = param_grabbed or DEFAULT_PARAM_GRABBED
-        self.config.param_stretch = param_stretch or DEFAULT_PARAM_STRETCH
-
+        for name in changed:
+            setattr(config, name, changes[name])
         try:
-            self.config.save()
-            self.log("OSC configuration saved.")
-        finally:
-            if old_params != (self.config.param_grabbed, self.config.param_stretch):
-                self.log("OSC Parameters changed. Restarting OSC listener...")
-                self._spawn(self._restart_osc_server)
+            config.save()
+        except Exception:
+            for name in changed:
+                setattr(config, name, old[name])
+            raise
+        self.log("Configuration saved.")
+
+        self.client.api_key = config.api_key
+        self.client.shocker_ids = config.shocker_ids
+        self.client.shocker_mode = config.shocker_mode
+        if "param_grabbed" in changed or "param_stretch" in changed:
+            self.log("OSC Parameters changed. Restarting OSC listener...")
+            self._spawn(self._restart_osc_server)
 
     def _restart_osc_server(self):
         self.osc.restart(self._osc_handlers())
@@ -281,21 +309,22 @@ class ShockEngine:
             return
 
         settings = self.settings
-        with self.lock:
-            if not self.is_active:
-                return
-            current_time = time.time()
-            if current_time - self.last_shock_time < settings.cooldown:
-                return
-            self.last_shock_time = current_time
-
-        self.listener.on_cooldown_started()
-
-        max_i = settings.max_intensity
         max_d = settings.max_duration
         action_type = "Vibrate" if settings.vibrate else "Shock"
+        with self.lock:
+            # A stretch pull's cooldown only starts once its loop has finished.
+            if not self.is_active or self.is_dynamic_loop_running:
+                return
+            current_time = time.time()
+            if current_time < self.shock_end_time + settings.cooldown:
+                return
+            duration_s = round(random.uniform(0.3, max_d), 2) if max_d > 0.3 else 0.3
+            self.shock_end_time = current_time + duration_s
+            self._output = action_type
 
-        duration_s = round(random.uniform(0.3, max_d), 2) if max_d > 0.3 else 0.3
+        self.listener.on_status_changed()
+
+        max_i = settings.max_intensity
         duration_ms = int(duration_s * 1000)
         intensity = random.randint(1, max_i) if max_i > 1 else 1
 
@@ -310,6 +339,8 @@ class ShockEngine:
             if self.is_dynamic_loop_running:
                 return
             self.is_dynamic_loop_running = True
+            self._output = "Vibrate" if self.settings.vibrate else "Shock"
+        self.listener.on_status_changed()
 
         self.log("Physbone Stretch: Started.")
 
@@ -326,6 +357,7 @@ class ShockEngine:
             intensity = max(int(stretch_clamped * settings.max_intensity), 1)
 
             action_type = "Vibrate" if settings.vibrate else "Shock"
+            self._output = action_type
 
             self.send_openshock_command(intensity, 400, action_type, log_success=False)
             time.sleep(0.2)
@@ -343,11 +375,16 @@ class ShockEngine:
 
         with self.lock:
             self.is_dynamic_loop_running = False
-            self.last_shock_time = time.time()
-        self.listener.on_cooldown_started()
+            self.shock_end_time = time.time()
+        self.listener.on_status_changed()
 
     def send_openshock_command(self, intensity, duration_ms, action_type, log_success=True):
-        result = self.client.send(intensity, duration_ms, action_type)
+        # One request at a time, so a Stop can't overtake a shock that's already on its
+        # way. A shock still waiting its turn when the system is disabled is dropped.
+        with self._send_lock:
+            if action_type != "Stop" and not self.is_active:
+                return
+            result = self.client.send(intensity, duration_ms, action_type)
         if result is None:
             return
         success, message = result
