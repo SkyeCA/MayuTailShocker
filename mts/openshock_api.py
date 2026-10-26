@@ -13,23 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 class OpenShockClient:
-    """Thin wrapper around the OpenShock HTTP control API."""
+    """Thin wrapper around the OpenShock HTTP control API. Reads the token, shocker IDs
+    and mode from the AppConfig on every send, so saved changes apply straight away."""
 
-    def __init__(self, api_key: str = "", shocker_ids: Optional[List[str]] = None, shocker_mode: str = "All"):
-        self.api_key = api_key
-        self.shocker_ids = shocker_ids or []
-        self.shocker_mode = shocker_mode
+    def __init__(self, config):
+        self.config = config
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.api_key and self.shocker_ids)
+        return self.config.is_complete
 
     def _target_ids(self, action_type: str) -> List[str]:
+        shocker_ids = self.config.shocker_ids
         # A Stop always goes to every shocker: in Random mode we can't be sure which one
         # is still running.
-        if action_type != "Stop" and self.shocker_mode == "Random" and len(self.shocker_ids) > 1:
-            return [random.choice(self.shocker_ids)]
-        return self.shocker_ids
+        if action_type != "Stop" and self.config.shocker_mode == "Random" and len(shocker_ids) > 1:
+            return [random.choice(shocker_ids)]
+        return shocker_ids
 
     def send(self, intensity: int, duration_ms: int, action_type: str) -> Optional[Tuple[bool, str]]:
         """Send a control command. Returns (success, message), or None if unconfigured."""
@@ -45,7 +45,7 @@ class OpenShockClient:
             "customName": "MayuTailShocker",
         }
         headers = {
-            "OpenShockToken": self.api_key,
+            "OpenShockToken": self.config.api_key,
             "User-Agent": USER_AGENT,
             "Content-Type": "application/json",
         }

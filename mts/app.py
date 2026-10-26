@@ -81,7 +81,7 @@ class TailShockerApp(EngineListener):
 
         config, config_error = load_config()
         ctk.set_appearance_mode(config.appearance_mode)
-        client = OpenShockClient(config.api_key, config.shocker_ids, config.shocker_mode)
+        client = OpenShockClient(config)
         osc = OSCBridge(OSC_IP, OSC_PORT, OSC_SEND_PORT)
         self.engine = ShockEngine(config, client, osc, listener=self)
 

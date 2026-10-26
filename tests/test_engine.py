@@ -72,8 +72,11 @@ class EngineTestCase(unittest.TestCase):
             setattr(self, f"mock_{name}", patcher.start())
             self.addCleanup(patcher.stop)
 
+        # Patched on the class: update_config saves a copy, not this instance.
+        patcher = patch.object(AppConfig, "save")
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.config = AppConfig(api_key="key", shocker_ids=["a"])
-        self.config.save = MagicMock()
         self.client = MagicMock(is_configured=True)
         self.client.send.return_value = (True, "ok")
         self.osc = FakeOSC()
@@ -353,10 +356,10 @@ class DynamicModeTests(EngineTestCase):
 
 
 class ConfigTests(EngineTestCase):
-    def test_shocker_changes_are_applied_to_the_client_and_saved(self):
+    def test_shocker_changes_are_saved_and_applied(self):
         self.engine.update_config(shocker_ids=["a", "b"], shocker_mode="Random")
-        self.assertEqual(self.client.shocker_ids, ["a", "b"])
-        self.assertEqual(self.client.shocker_mode, "Random")
+        self.assertEqual(self.config.shocker_ids, ["a", "b"])
+        self.assertEqual(self.config.shocker_mode, "Random")
         self.config.save.assert_called_once()
 
     def test_changed_osc_params_restart_the_listener(self):

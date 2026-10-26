@@ -192,24 +192,17 @@ class ShockEngine:
         """Saves the given AppConfig fields and applies whichever changed. If the save
         fails it raises with nothing changed, so the caller can report it."""
         config = self.config
-        old = {name: getattr(config, name) for name in changes}
-        changed = [name for name, value in changes.items() if value != old[name]]
+        changed = [name for name, value in changes.items() if getattr(config, name) != value]
         if not changed:
             return
 
+        # Save a copy first: the client reads the live config from other threads, so it
+        # must never see values that then fail to save.
+        replace(config, **changes).save()
         for name in changed:
             setattr(config, name, changes[name])
-        try:
-            config.save()
-        except Exception:
-            for name in changed:
-                setattr(config, name, old[name])
-            raise
         self.log("Configuration saved.")
 
-        self.client.api_key = config.api_key
-        self.client.shocker_ids = config.shocker_ids
-        self.client.shocker_mode = config.shocker_mode
         if "param_grabbed" in changed or "param_stretch" in changed:
             self.log("OSC Parameters changed. Restarting OSC listener...")
             self._spawn(self._restart_osc_server)
