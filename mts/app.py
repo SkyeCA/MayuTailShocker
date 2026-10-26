@@ -1,6 +1,7 @@
 import atexit
 import signal
 import tkinter as tk
+from collections import deque
 from datetime import datetime
 
 import customtkinter as ctk
@@ -39,11 +40,11 @@ from .theme import (
 from .version import __version__
 
 OUTPUT_VIBRATE, OUTPUT_SHOCK = "Vibrate", "Shock"
-MODE_RANDOM, MODE_STRETCH = "Random bursts", "Stretch"
+MODE_RANDOM, MODE_STRETCH = "Random", "Stretch"
 
 MODE_HINTS = {
-    MODE_RANDOM: "Each pull fires one random burst, then waits for the cooldown.",
-    MODE_STRETCH: "Strength follows how far your tail is stretched while it's held.",
+    MODE_RANDOM: "Randomizes value when your tail is pulled and waits for cooldown.",
+    MODE_STRETCH: "Sends continuous values based on how far your tail is being stretched.",
 }
 
 # setting name, caption, from, to, step, value format
@@ -52,6 +53,8 @@ DIALS = (
     ("max_duration", "Duration", 0.3, 10.0, 0.1, "{:.1f} s"),
     ("cooldown", "Cooldown", 1.0, 10.0, 0.5, "{:.1f} s"),
 )
+
+LOG_HISTORY = 1000  # lines kept for the Logs window
 
 SETUP_MESSAGE = "SETUP REQUIRED: Open Settings to add your OpenShock API token and shocker IDs."
 
@@ -63,8 +66,9 @@ class TailShockerApp(EngineListener):
     def __init__(self, root):
         self.root = root
         self.root.title("Mayu Tail Shocker")
-        self.root.geometry("500x780")
-        self.root.minsize(460, 740)
+        # Sized to its content (which changes with the setup banner), at least 500 wide.
+        self.root.minsize(500, 0)
+        self.root.resizable(False, False)
 
         self._icon_photo = self._load_icon_photo()
         self._apply_window_icon(self.root)
@@ -78,6 +82,8 @@ class TailShockerApp(EngineListener):
         self._status_job = None
         self._last_tail = None
         self._dials = {}
+        self._log_lines = deque(maxlen=LOG_HISTORY)
+        self._log_window = None
 
         self._build_gui()
         self._apply_settings(self.engine.settings)
@@ -136,7 +142,6 @@ class TailShockerApp(EngineListener):
         self._build_setup_banner()
         self._build_power_card()
         self._build_settings_card()
-        self._build_activity()
 
     def _build_header(self):
         self.header = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -147,6 +152,7 @@ class TailShockerApp(EngineListener):
             font=title_font(),
         ).pack(side="left")
         self._secondary_button(self.header, "About", self.open_about, width=70).pack(side="right")
+        self._secondary_button(self.header, "Logs", self.open_logs, width=60).pack(side="right", padx=(0, 8))
         self._secondary_button(self.header, "Settings", self.open_settings).pack(side="right", padx=(0, 8))
 
     def _build_setup_banner(self):
@@ -162,12 +168,8 @@ class TailShockerApp(EngineListener):
 
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill="x", padx=16, pady=(14, 0))
-        text = ctk.CTkFrame(top, fg_color="transparent")
-        text.pack(side="left", fill="x", expand=True)
-        self.power_title = ctk.CTkLabel(text, text="", font=title_font(22), anchor="w")
-        self.power_title.pack(fill="x")
-        self.power_subtitle = ctk.CTkLabel(text, text="", font=body_font(), text_color=MUTED_TEXT, anchor="w")
-        self.power_subtitle.pack(fill="x")
+        self.power_title = ctk.CTkLabel(top, text="", font=title_font(22), anchor="w")
+        self.power_title.pack(side="left")
 
         self.power_switch = ctk.CTkSwitch(
             top, text="", width=60, switch_width=56, switch_height=28,
@@ -196,7 +198,7 @@ class TailShockerApp(EngineListener):
         return value
 
     def _build_settings_card(self):
-        card = self._card(self.root, pady=(0, 10))
+        card = self._card(self.root, pady=(0, 16))
         ctk.CTkLabel(card, text="Shocker Settings", font=heading_font(15), anchor="w").pack(fill="x", padx=16, pady=(12, 4))
 
         toggles = ctk.CTkFrame(card, fg_color="transparent")
@@ -214,7 +216,7 @@ class TailShockerApp(EngineListener):
 
         self.mode_hint = ctk.CTkLabel(
             card, text="", font=body_font(12), text_color=MUTED_TEXT,
-            anchor="w", justify="left", wraplength=380,
+            anchor="w", justify="left", wraplength=436,  # the card's full inner width
         )
         self.mode_hint.pack(fill="x", padx=16, pady=(6, 4))
 
@@ -227,13 +229,6 @@ class TailShockerApp(EngineListener):
             dial_row.grid_columnconfigure(column, weight=1, uniform="dials")
             self._dials[name] = dial
         ctk.CTkFrame(card, fg_color="transparent", height=6).pack()
-
-    def _build_activity(self):
-        frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        ctk.CTkLabel(frame, text="Activity", font=heading_font(15), anchor="w").pack(fill="x", pady=(0, 4))
-        self.log_area = ctk.CTkTextbox(frame, height=60,font=mono_font(), wrap="word", state="disabled")
-        self.log_area.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------------
     # User input -> engine
@@ -293,7 +288,7 @@ class TailShockerApp(EngineListener):
 
     def _render_mode(self, mode):
         self.mode_hint.configure(text=MODE_HINTS[mode])
-        # Duration and cooldown only apply to random bursts.
+        # Duration and cooldown only apply to Random mode.
         for name in ("max_duration", "cooldown"):
             self._dials[name].set_enabled(mode != MODE_STRETCH)
         self._render_status()
@@ -302,11 +297,9 @@ class TailShockerApp(EngineListener):
         if is_active:
             self.power_switch.select()
             self.power_title.configure(text="Active", text_color=SUCCESS)
-            self.power_subtitle.configure(text="Pulling your tail will trigger your shockers.")
         else:
             self.power_switch.deselect()
             self.power_title.configure(text="Disabled", text_color=MUTED_TEXT)
-            self.power_subtitle.configure(text="Nothing will be sent until you turn it back on.")
         self._render_status()
 
     def _render_status(self):
@@ -361,11 +354,19 @@ class TailShockerApp(EngineListener):
         self.root.after(0, self._safe_log, message)
 
     def _safe_log(self, message):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_area.configure(state="normal")
-        self.log_area.insert("end", f"[{timestamp}] {message}\n")
-        self.log_area.see("end")
-        self.log_area.configure(state="disabled")
+        line = f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n"
+        self._log_lines.append(line)
+        if self._log_window is not None:
+            self._append_to_log_view(line)
+
+    def _append_to_log_view(self, text):
+        view = self._log_view
+        at_bottom = view.yview()[1] >= 0.999
+        view.configure(state="normal")
+        view.insert("end", text)
+        view.configure(state="disabled")
+        if at_bottom:  # follow new lines, unless the user has scrolled up to read
+            view.see("end")
 
     # ------------------------------------------------------------------
     # Windows
@@ -374,10 +375,40 @@ class TailShockerApp(EngineListener):
         window = SettingsWindow(self.root, self.engine, on_saved=self._on_settings_saved)
         self._apply_window_icon(window)
 
+    def open_logs(self):
+        if self._log_window is not None:
+            self._log_window.lift()
+            self._log_window.focus_force()
+            return
+
+        window = ctk.CTkToplevel(self.root)
+        window.title("Logs")
+        window.geometry("600x380")
+        window.minsize(400, 200)
+        window.transient(self.root)
+        self._apply_window_icon(window)
+
+        def close():
+            self._log_window = None
+            window.destroy()
+
+        # Packed first so the log view, which expands, can't squeeze it out.
+        ctk.CTkButton(window, text="Close", width=100, command=close).pack(side="bottom", anchor="e", padx=12, pady=(0, 12))
+        self._log_view = ctk.CTkTextbox(window, font=mono_font(), wrap="word", state="disabled")
+        self._log_view.pack(fill="both", expand=True, padx=12, pady=12)
+        self._log_window = window
+        self._append_to_log_view("".join(self._log_lines))
+        self._log_view.see("end")
+
+        window.protocol("WM_DELETE_WINDOW", close)
+        window.bind("<Escape>", lambda e: close())
+        window.after(100, window.lift)
+
     def open_about(self):
         window = ctk.CTkToplevel(self.root)
         window.title("About")
-        window.geometry("300x250")
+        # Height follows the content, so there's no empty space under the links.
+        window.minsize(300, 0)
         window.resizable(False, False)
         window.transient(self.root)
         self._apply_window_icon(window)
@@ -390,7 +421,7 @@ class TailShockerApp(EngineListener):
         ctk.CTkLabel(window, text="Created by SkyeCA", font=body_font()).pack(pady=(6, 8))
 
         links = ctk.CTkFrame(window, fg_color="transparent")
-        links.pack()
+        links.pack(pady=(0, 20))
         link_label(links, ABOUT_URL.split("//")[-1], ABOUT_URL).pack(side="left")
         ctk.CTkLabel(links, text="  ·  ", text_color=MUTED_TEXT).pack(side="left")
         link_label(links, "GitHub", GITHUB_URL).pack(side="left")
