@@ -5,13 +5,13 @@ import customtkinter as ctk
 from .config import APPEARANCE_MODES
 from .constants import DEFAULT_PARAM_GRABBED, DEFAULT_PARAM_STRETCH, OPENSHOCK_API_TOKENS_URL
 from .theme import MUTED_TEXT, SEGMENTED, body_font, heading_font, link_label, title_font
-from .windowing import center_window
+from .windowing import DialogWindow, center_window
 
 MODE_LABELS = {"All": "All shockers", "Random": "One at random"}
 PAGES = ("OpenShock", "Shockers", "OSC", "Appearance")
 
 
-class SettingsWindow(ctk.CTkToplevel):
+class SettingsWindow(DialogWindow):
     """One window for everything in config.json, with a category sidebar on the left
     and the selected category's options on the right. The engine applies only what
     actually changed, so e.g. the OSC listener restarts only when needed."""
@@ -27,7 +27,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self.title("Settings")
         self.geometry("640x460")
         self.minsize(580, 440)
-        self.transient(parent)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 

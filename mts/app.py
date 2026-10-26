@@ -41,7 +41,7 @@ from .theme import (
     title_font,
 )
 from .version import __version__
-from .windowing import center_window
+from .windowing import DialogWindow, center_window
 
 OUTPUT_VIBRATE, OUTPUT_SHOCK = "Vibrate", "Shock"
 MODE_RANDOM, MODE_STRETCH = "Random", "Stretch"
@@ -410,11 +410,10 @@ class TailShockerApp(EngineListener):
         if self._raise_existing(self._log_window):
             return
 
-        window = ctk.CTkToplevel(self.root)
+        window = DialogWindow(self.root)
         window.title("Logs")
         window.geometry("600x380")
         window.minsize(400, 200)
-        window.transient(self.root)
         self._apply_window_icon(window)
 
         def close():
@@ -437,12 +436,11 @@ class TailShockerApp(EngineListener):
     def open_about(self):
         if self._raise_existing(self._about_window):
             return
-        window = self._about_window = ctk.CTkToplevel(self.root)
+        window = self._about_window = DialogWindow(self.root)
         window.title("About")
         # Height follows the content, so there's no empty space under the links.
         window.minsize(300, 0)
         window.resizable(False, False)
-        window.transient(self.root)
         self._apply_window_icon(window)
 
         icon = self._icon_image(64)
