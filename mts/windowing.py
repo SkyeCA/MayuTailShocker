@@ -1,5 +1,27 @@
 import tkinter as tk
 
+import customtkinter as ctk
+
+
+class DialogWindow(ctk.CTkToplevel):
+    """A CTkToplevel kept in front of parent (transient).
+
+    On Windows, CustomTkinter recolours title bars on a theme change by hiding each
+    window, then restoring the state it had beforehand. The main window goes first,
+    and hiding it also hides its transient windows, so a dialog's "state beforehand"
+    reads as withdrawn and it never came back - a modal one (Settings) keeping its
+    grab, which locked up the app. These dialogs are never withdrawn on purpose, so
+    showing a withdrawn one again before CustomTkinter looks is always right."""
+
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.transient(parent)
+
+    def _windows_set_titlebar_color(self, color_mode):
+        if self.state() == "withdrawn":
+            self.deiconify()
+        super()._windows_set_titlebar_color(color_mode)
+
 
 def center_window(window, parent=None):
     """Moves window to the centre of parent, or of the screen if parent is None.
