@@ -24,7 +24,7 @@ Pre-built versions of the desktop app and the Unity prefab for in-game control a
 
 ### Software Dependencies
 - **Python 3.x**
-- Python packages: `python-osc`, `requests`
+- Python packages: `python-osc`, `requests`, `customtkinter`, `pillow`
 
 ### OpenShock
 - An **OpenShock API Token**

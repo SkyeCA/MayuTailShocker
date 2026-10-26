@@ -5,6 +5,8 @@ from typing import List, Optional, Tuple
 
 from .constants import CONFIG_FILE, DEFAULT_PARAM_GRABBED, DEFAULT_PARAM_STRETCH
 
+APPEARANCE_MODES = ("Dark", "Light", "System")
+
 
 @dataclass
 class AppConfig:
@@ -13,6 +15,7 @@ class AppConfig:
     shocker_mode: str = "All"
     param_grabbed: str = DEFAULT_PARAM_GRABBED
     param_stretch: str = DEFAULT_PARAM_STRETCH
+    appearance_mode: str = "Dark"
 
     @property
     def is_complete(self) -> bool:
@@ -45,6 +48,9 @@ def load_config() -> Tuple[AppConfig, Optional[str]]:
         param_grabbed=data.get("param_grabbed") or DEFAULT_PARAM_GRABBED,
         param_stretch=data.get("param_stretch") or DEFAULT_PARAM_STRETCH,
     )
+
+    if data.get("appearance_mode") in APPEARANCE_MODES:
+        cfg.appearance_mode = data["appearance_mode"]
 
     # Migrate the old single-shocker config format.
     legacy_id = data.get("shocker_id")

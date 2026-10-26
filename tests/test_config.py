@@ -69,6 +69,27 @@ class LoadConfigTests(ConfigTestCase):
         cfg, _ = load_config()
         self.assertEqual(cfg.shocker_mode, "Random")
 
+    def test_appearance_mode_defaults_to_dark(self):
+        self.write_config({"api_key": "key", "shocker_ids": ["a"]})
+        cfg, _ = load_config()
+        self.assertEqual(cfg.appearance_mode, "Dark")
+
+    def test_saved_appearance_mode_is_loaded(self):
+        self.write_config({"appearance_mode": "System"})
+        cfg, _ = load_config()
+        self.assertEqual(cfg.appearance_mode, "System")
+
+    def test_unknown_appearance_mode_falls_back_to_dark(self):
+        self.write_config({"appearance_mode": "Neon"})
+        cfg, _ = load_config()
+        self.assertEqual(cfg.appearance_mode, "Dark")
+
+    def test_unknown_keys_from_older_versions_are_ignored(self):
+        self.write_config({"api_key": "key", "shocker_ids": ["a"], "control_style": "Dials"})
+        cfg, error = load_config()
+        self.assertIsNone(error)
+        self.assertTrue(cfg.is_complete)
+
     def test_legacy_shocker_id_is_migrated_and_persisted(self):
         self.write_config({"api_key": "key", "shocker_ids": [], "shocker_id": "legacy-id"})
         cfg, _ = load_config()
