@@ -14,10 +14,13 @@ IF NOT EXIST "venv\Scripts\activate.bat" (
     pip install -r requirements.txt
     
     echo [!] Installing PyInstaller...
-    pip install pyinstaller pillow
+    pip install pyinstaller
 ) ELSE (
     echo [*] Virtual environment found. Activating...
     call venv\Scripts\activate.bat
+
+    echo [*] Updating dependencies...
+    pip install -q -r requirements.txt
 )
 
 echo [*] Bumping version...
@@ -25,7 +28,7 @@ echo [*] Bumping version...
 for /f %%v in ('python bump_version.py') do set NEW_VERSION=%%v
 echo [*] Building version %NEW_VERSION%...
 
-pyinstaller -n "MayuTailShocker" --noconsole --onefile --icon=resources/icon.png --add-data "resources/icon.png;resources" --version-file=version_info.txt tail_shocker.py
+pyinstaller -n "MayuTailShocker" --noconsole --onefile --icon=resources/icon.png --add-data "resources/icon.png;resources" --collect-data customtkinter --version-file=version_info.txt tail_shocker.py
 
 echo [*] Signing the Executable...
 

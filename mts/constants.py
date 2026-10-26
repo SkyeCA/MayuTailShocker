@@ -24,6 +24,7 @@ USER_AGENT = "MayuTailShocker/1.0 (skye@vore.my)"
 
 GITHUB_URL = "https://github.com/SkyeCA/MayuTailShocker"
 ABOUT_URL = "https://vore.my"
+OPENSHOCK_API_TOKENS_URL = "https://openshock.app/settings/api-tokens"
 
 
 def resource_path(relative_path):
